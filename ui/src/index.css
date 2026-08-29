@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#090b10] text-slate-100 overflow-x-hidden;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1017;
+}
+::-webkit-scrollbar-thumb {
+  background: #23293d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #353d5a;
+}
+
+.prose-literary {
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 1.18rem;
+  line-height: 1.85;
+}

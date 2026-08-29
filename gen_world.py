@@ -11,45 +11,37 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_writer as _call_writer
+
+SYSTEM_PROMPT = (
+    "You are a fantasy worldbuilder with deep knowledge of Sanderson's Laws, "
+    "Le Guin's prose philosophy, and TTRPG-quality lore design. "
+    "You write world bibles that are specific, interconnected, and imply depth "
+    "beyond what's stated. You never use AI slop words (delve, tapestry, myriad, etc). "
+    "You write in clean, direct prose. Every rule has a cost. Every cultural detail "
+    "implies a history. Every location has a sensory signature."
+)
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.7,
-        "system": (
-            "You are a fantasy worldbuilder with deep knowledge of Sanderson's Laws, "
-            "Le Guin's prose philosophy, and TTRPG-quality lore design. "
-            "You write world bibles that are specific, interconnected, and imply depth "
-            "beyond what's stated. You never use AI slop words (delve, tapestry, myriad, etc). "
-            "You write in clean, direct prose. Every rule has a cost. Every cultural detail "
-            "implies a history. Every location has a sensory signature."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.7, timeout=300)
 
-seed = (BASE_DIR / "seed.txt").read_text()
-voice = (BASE_DIR / "voice.md").read_text()
-craft = (BASE_DIR / "CRAFT.md").read_text()
 
-# Extract voice Part 2 only (the novel-specific voice)
-voice_lines = voice.split('\n')
-part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
-voice_part2 = '\n'.join(voice_lines[part2_start:])
+def main():
+    seed_file = BASE_DIR / "seed.txt"
+    if not seed_file.exists():
+        print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
+        sys.exit(1)
 
-prompt = f"""Build a complete world bible for this fantasy novel. This is the WORLD.MD file -- 
+    seed = seed_file.read_text()
+    voice = (BASE_DIR / "voice.md").read_text() if (BASE_DIR / "voice.md").exists() else ""
+    craft = (BASE_DIR / "CRAFT.md").read_text() if (BASE_DIR / "CRAFT.md").exists() else ""
+
+    # Extract voice Part 2 only (the novel-specific voice)
+    voice_lines = voice.split('\n')
+    part2_start = next((i for i, l in enumerate(voice_lines) if 'Part 2' in l), 0)
+    voice_part2 = '\n'.join(voice_lines[part2_start:])
+
+    prompt = f"""Build a complete world bible for this fantasy novel. This is the WORLD.MD file -- 
 the definitive reference for everything that EXISTS in this world. A writer should be able 
 to resolve any worldbuilding question from this document alone.
 
@@ -121,6 +113,10 @@ IMPORTANT:
 - Target ~3000-4000 words. Dense, not padded.
 """
 
-print("Calling writer model...", file=sys.stderr)
-result = call_writer(prompt)
-print(result)
+    print("Calling writer model...", file=sys.stderr)
+    result = call_writer(prompt)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

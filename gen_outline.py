@@ -8,48 +8,39 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_writer as _call_writer
+
+SYSTEM_PROMPT = (
+    "You are a novel architect with deep knowledge of Save the Cat beats, "
+    "Sanderson's plotting principles, Dan Harmon's Story Circle, and MICE Quotient. "
+    "You build outlines that an author can draft from without inventing structure "
+    "on the fly. Every chapter has beats, emotional arc, and try-fail cycle type. "
+    "You never use AI slop words. You write in clean, direct prose."
+)
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "context-1m-2025-08-07",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.5,
-        "system": (
-            "You are a novel architect with deep knowledge of Save the Cat beats, "
-            "Sanderson's plotting principles, Dan Harmon's Story Circle, and MICE Quotient. "
-            "You build outlines that an author can draft from without inventing structure "
-            "on the fly. Every chapter has beats, emotional arc, and try-fail cycle type. "
-            "You never use AI slop words. You write in clean, direct prose."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=600)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.5, timeout=600)
 
-seed = (BASE_DIR / "seed.txt").read_text()
-world = (BASE_DIR / "world.md").read_text()
-characters = (BASE_DIR / "characters.md").read_text()
-mystery = (BASE_DIR / "MYSTERY.md").read_text()
-craft = (BASE_DIR / "CRAFT.md").read_text()
 
-# Voice Part 2 only
-voice = (BASE_DIR / "voice.md").read_text()
-voice_lines = voice.split('\n')
-part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
-voice_part2 = '\n'.join(voice_lines[part2_start:])
+def main():
+    seed_file = BASE_DIR / "seed.txt"
+    if not seed_file.exists():
+        print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
+        sys.exit(1)
 
-prompt = f"""Build a complete chapter outline for this fantasy novel. Target: 22-26 chapters,
+    seed = seed_file.read_text()
+    world = (BASE_DIR / "world.md").read_text() if (BASE_DIR / "world.md").exists() else ""
+    characters = (BASE_DIR / "characters.md").read_text() if (BASE_DIR / "characters.md").exists() else ""
+    mystery = (BASE_DIR / "MYSTERY.md").read_text() if (BASE_DIR / "MYSTERY.md").exists() else ""
+    craft = (BASE_DIR / "CRAFT.md").read_text() if (BASE_DIR / "CRAFT.md").exists() else ""
+
+    # Voice Part 2 only
+    voice = (BASE_DIR / "voice.md").read_text() if (BASE_DIR / "voice.md").exists() else ""
+    voice_lines = voice.split('\n')
+    part2_start = next((i for i, l in enumerate(voice_lines) if 'Part 2' in l), 0)
+    voice_part2 = '\n'.join(voice_lines[part2_start:])
+
+    prompt = f"""Build a complete chapter outline for this fantasy novel. Target: 22-26 chapters,
 ~80,000 words total (~3,000-4,000 words per chapter).
 
 SEED CONCEPT:
@@ -129,6 +120,10 @@ CONSTRAINTS:
 - The foreshadowing ledger must have plant-to-payoff distances of at least 3 chapters
 """
 
-print("Calling writer model...", file=sys.stderr)
-result = call_writer(prompt)
-print(result)
+    print("Calling writer model...", file=sys.stderr)
+    result = call_writer(prompt)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

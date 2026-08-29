@@ -142,8 +142,9 @@ def run_tool(cmd: str, timeout: int = 600, check: bool = False) -> subprocess.Co
 
 
 def uv_run(script: str, timeout: int = 600) -> subprocess.CompletedProcess:
-    """Shorthand for 'uv run python <script>' from project root."""
-    return run_tool(f"uv run python {script}", timeout=timeout)
+    """Shorthand for running a python script from project root."""
+    return run_tool(f'"{sys.executable}" {script}', timeout=timeout)
+
 
 
 # ---------------------------------------------------------------------------
@@ -322,9 +323,14 @@ def run_drafting(state: dict) -> dict:
     banner("PHASE 2: DRAFTING", "=")
 
     total = get_total_chapters(state)
+    actual_chapters = count_chapter_files()
+    if state.get("chapters_drafted", 0) > actual_chapters:
+        state["chapters_drafted"] = actual_chapters
+        save_state(state)
     start_chapter = state.get("chapters_drafted", 0) + 1
 
     CHAPTERS_DIR.mkdir(exist_ok=True)
+
 
     for ch in range(start_chapter, total + 1):
         banner(f"Drafting Chapter {ch}/{total}", "-")
@@ -473,6 +479,14 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
     BRIEFS_DIR.mkdir(exist_ok=True)
     EDIT_LOGS_DIR.mkdir(exist_ok=True)
 
+    if count_chapter_files() == 0:
+        step("WARNING: No chapter files found on disk. Cannot run revision on 0 chapters.")
+        step("Redirecting to Phase 2 (Drafting)...")
+        state["phase"] = "drafting"
+        state["chapters_drafted"] = 0
+        save_state(state)
+        return run_drafting(state)
+
     prev_score = state.get("novel_score", 0.0)
     start_cycle = state.get("revision_cycle", 0) + 1
     max_cycles = min(max_cycles, MAX_REVISION_CYCLES)
@@ -488,14 +502,16 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
         apply_cuts = BASE_DIR / "apply_cuts.py"
         if apply_cuts.exists():
             step("Applying mechanical cuts (OVER-EXPLAIN, REDUNDANT)...")
-            run_tool("uv run python apply_cuts.py all "
-                     "--types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
+            uv_run("apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
         else:
             step("apply_cuts.py not found, skipping mechanical cuts")
 
-        # -- Step 3: Reader panel --
+        # -- Step 3: Build arc summary & run reader panel --
+        step("Building fresh arc summary from chapters...")
+        uv_run("build_arc_summary.py", timeout=300)
         step("Running reader panel evaluation...")
         uv_run("reader_panel.py", timeout=600)
+
 
         # -- Step 4: Parse panel consensus --
         panel_path = EDIT_LOGS_DIR / "reader_panel.json"
@@ -523,8 +539,8 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             brief_file = BRIEFS_DIR / f"ch{ch_num:02d}_cycle{cycle}_{question}.md"
             gen_brief = BASE_DIR / "gen_brief.py"
             if gen_brief.exists():
-                step(f"Generating brief for Ch {ch_num}...")
-                run_tool(f"uv run python gen_brief.py --panel {ch_num}", timeout=300)
+                uv_run(f"gen_brief.py --panel {ch_num}", timeout=300)
+
                 # gen_brief.py may write to briefs/ — find the most recent brief
                 brief_candidates = sorted(
                     BRIEFS_DIR.glob(f"ch{ch_num:02d}*.md"),
@@ -623,8 +639,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             
             # Step 2: Parse the review
             step("Parsing review...")
-            parse_result = run_tool(
-                "uv run python review.py --parse", timeout=60)
+            parse_result = uv_run("review.py --parse", timeout=60)
             print(parse_result.stdout if parse_result else "")
             
             # Step 3: Check stopping condition
@@ -654,7 +669,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             gen_brief_py = BASE_DIR / "gen_brief.py"
             if gen_brief_py.exists():
                 # Auto mode: picks weakest chapter, cross-references all sources
-                run_tool("uv run python gen_brief.py --auto", timeout=300)
+                uv_run("gen_brief.py --auto", timeout=300)
                 
                 # Find any generated briefs and apply the top one
                 recent_briefs = sorted(
@@ -676,10 +691,9 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             step("Running mechanical cleanup pass...")
             apply_cuts_py = BASE_DIR / "apply_cuts.py"
             if apply_cuts_py.exists():
-                run_tool(
-                    "uv run python apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15",
-                    timeout=300)
+                uv_run("apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
                 git_add_commit(f"review round {rnd}: mechanical cleanup")
+
             
             step(f"Review round {rnd} complete.")
         
@@ -737,8 +751,8 @@ def run_export(state: dict) -> dict:
     # 4. Build LaTeX
     build_tex = BASE_DIR / "typeset" / "build_tex.py"
     if build_tex.exists():
-        step("Building LaTeX content...")
-        run_tool(f"uv run python typeset/build_tex.py", timeout=120)
+        uv_run("typeset/build_tex.py", timeout=120)
+
 
         # 5. Typeset with tectonic (if available)
         novel_tex = BASE_DIR / "typeset" / "novel.tex"
@@ -803,6 +817,14 @@ def run_pipeline(args):
         # Single phase mode
         phases = [args.phase]
     else:
+        # Reconcile state if files on disk disagree with state.json
+        actual_chapters = count_chapter_files()
+        if state.get("phase") in ["drafting", "revision", "export"] and actual_chapters == 0:
+            print("  [State Sync] 0 chapters found on disk. Resetting pipeline phase to foundation.", file=sys.stderr)
+            state["phase"] = "foundation"
+            state["chapters_drafted"] = 0
+            save_state(state)
+
         # Run from current state onward
         current = state.get("phase", "foundation")
         if current == "complete":
@@ -814,6 +836,7 @@ def run_pipeline(args):
         except ValueError:
             start_idx = 0
         phases = PHASE_ORDER[start_idx:]
+
 
     banner(f"AUTONOVEL PIPELINE — phases: {', '.join(phases)}")
     print(f"  State: phase={state.get('phase')}, "

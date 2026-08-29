@@ -10,38 +10,30 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_writer as _call_writer
+
+SYSTEM_PROMPT = (
+    "You are a continuity editor extracting hard facts from fantasy novel "
+    "planning documents. You are precise, exhaustive, and never invent facts "
+    "that aren't in the source material. Every entry must be traceable to a "
+    "specific statement in the source documents."
+)
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.2,  # Low temp for factual extraction
-        "system": (
-            "You are a continuity editor extracting hard facts from fantasy novel "
-            "planning documents. You are precise, exhaustive, and never invent facts "
-            "that aren't in the source material. Every entry must be traceable to a "
-            "specific statement in the source documents."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.2, timeout=300)
 
-world = (BASE_DIR / "world.md").read_text()
-characters = (BASE_DIR / "characters.md").read_text()
-seed = (BASE_DIR / "seed.txt").read_text()
 
-prompt = f"""Extract EVERY hard fact from these planning documents into a structured canon database.
+def main():
+    seed_file = BASE_DIR / "seed.txt"
+    if not seed_file.exists():
+        print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
+        sys.exit(1)
+
+    seed = seed_file.read_text()
+    world = (BASE_DIR / "world.md").read_text() if (BASE_DIR / "world.md").exists() else ""
+    characters = (BASE_DIR / "characters.md").read_text() if (BASE_DIR / "characters.md").exists() else ""
+
+    prompt = f"""Extract EVERY hard fact from these planning documents into a structured canon database.
 A "hard fact" is anything a writer must not contradict: names, ages, dates, physical descriptions,
 rules of the magic system, geography, relationships, established events.
 
@@ -90,6 +82,10 @@ RULES:
 - DO NOT invent facts. Only record what's explicitly stated.
 """
 
-print("Calling writer model...", file=sys.stderr)
-result = call_writer(prompt)
-print(result)
+    print("Calling writer model...", file=sys.stderr)
+    result = call_writer(prompt)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

@@ -11,44 +11,36 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_writer as _call_writer
+
+SYSTEM_PROMPT = (
+    "You are a character designer for literary fiction with deep knowledge of "
+    "wound/want/need/lie frameworks, Sanderson's three sliders, and dialogue "
+    "distinctiveness. You create characters who feel like real people with "
+    "contradictions, secrets, and speech patterns you can hear. "
+    "You never use AI slop words. You write in clean, direct prose."
+)
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.7,
-        "system": (
-            "You are a character designer for literary fiction with deep knowledge of "
-            "wound/want/need/lie frameworks, Sanderson's three sliders, and dialogue "
-            "distinctiveness. You create characters who feel like real people with "
-            "contradictions, secrets, and speech patterns you can hear. "
-            "You never use AI slop words. You write in clean, direct prose."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.7, timeout=300)
 
-seed = (BASE_DIR / "seed.txt").read_text()
-world = (BASE_DIR / "world.md").read_text()
 
-# Voice Part 2 only
-voice = (BASE_DIR / "voice.md").read_text()
-voice_lines = voice.split('\n')
-part2_start = next(i for i, l in enumerate(voice_lines) if 'Part 2' in l)
-voice_part2 = '\n'.join(voice_lines[part2_start:])
+def main():
+    seed_file = BASE_DIR / "seed.txt"
+    if not seed_file.exists():
+        print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
+        sys.exit(1)
 
-prompt = f"""Build a complete character registry for this fantasy novel. This is CHARACTERS.MD --
+    seed = seed_file.read_text()
+    world = (BASE_DIR / "world.md").read_text() if (BASE_DIR / "world.md").exists() else ""
+
+    # Voice Part 2 only
+    voice = (BASE_DIR / "voice.md").read_text() if (BASE_DIR / "voice.md").exists() else ""
+    voice_lines = voice.split('\n')
+    part2_start = next((i for i, l in enumerate(voice_lines) if 'Part 2' in l), 0)
+    voice_part2 = '\n'.join(voice_lines[part2_start:])
+
+    prompt = f"""Build a complete character registry for this fantasy novel. This is CHARACTERS.MD --
 the definitive reference for WHO exists in this story, what drives them, how they speak,
 and what secrets they carry.
 
@@ -143,6 +135,10 @@ IMPORTANT:
 - Target ~3000-4000 words. Dense character work, not padding.
 """
 
-print("Calling writer model...", file=sys.stderr)
-result = call_writer(prompt)
-print(result)
+    print("Calling writer model...", file=sys.stderr)
+    result = call_writer(prompt)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

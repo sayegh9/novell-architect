@@ -17,9 +17,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", "claude-opus-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_judge
 
 READERS = {
     "editor": {
@@ -111,23 +109,15 @@ Respond with JSON:
 """
 
 def call_reader(reader_key, arc_summary):
-    import httpx
     reader = READERS[reader_key]
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": JUDGE_MODEL,
-        "max_tokens": 4000,
-        "temperature": 0.7,  # Higher temp for personality
-        "system": reader["system"],
-        "messages": [{"role": "user", "content": READER_PROMPT.format(arc_summary=arc_summary)}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=300)
-    resp.raise_for_status()
-    raw = resp.json()["content"][0]["text"]
+    raw = call_judge(
+        prompt=READER_PROMPT.format(arc_summary=arc_summary),
+        system=reader["system"],
+        max_tokens=4000,
+        temperature=0.7,
+        timeout=300,
+    )
+
     
     # Parse JSON
     raw = raw.strip()
@@ -184,13 +174,32 @@ def find_disagreements(results):
     return disagreements
 
 def main():
-    arc_summary = (BASE_DIR / "arc_summary.md").read_text()
+    arc_path = BASE_DIR / "arc_summary.md"
+    if not arc_path.exists() or arc_path.stat().st_size < 50:
+        chapter_files = sorted((BASE_DIR / "chapters").glob("ch_*.md"))
+        if chapter_files:
+            print("arc_summary.md not found, generating from chapters...", file=sys.stderr)
+            try:
+                import build_arc_summary
+                build_arc_summary.main()
+            except Exception as e:
+                print(f"Failed to auto-generate arc summary: {e}", file=sys.stderr)
+        else:
+            print("WARNING: No chapters and no arc_summary.md found.", file=sys.stderr)
+            return
+
+    if not arc_path.exists():
+        print("ERROR: arc_summary.md still not found. Cannot run reader panel.", file=sys.stderr)
+        return
+
+    arc_summary = arc_path.read_text()
     
     results = {}
     for reader_key, reader_info in READERS.items():
         print(f"\n{'='*50}")
         print(f"READING: {reader_info['name']}")
         print(f"{'='*50}")
+
         
         try:
             result = call_reader(reader_key, arc_summary)

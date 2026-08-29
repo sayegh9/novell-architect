@@ -8,37 +8,33 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
-WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", "claude-sonnet-4-6")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
+from llm import call_writer as _call_writer
+
+SYSTEM_PROMPT = (
+    "You are a novel architect continuing an outline. Write in the same format "
+    "as the preceding chapters. Every chapter needs: POV, Location, Save the Cat beat, "
+    "% mark, Emotional arc, Try-fail cycle, Beats, Plants, Payoffs, Character movement, "
+    "The lie, Word count target."
+)
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.5,
-        "system": (
-            "You are a novel architect continuing an outline. Write in the same format "
-            "as the preceding chapters. Every chapter needs: POV, Location, Save the Cat beat, "
-            "% mark, Emotional arc, Try-fail cycle, Beats, Plants, Payoffs, Character movement, "
-            "The lie, Word count target."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=600)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.5, timeout=600)
 
-part1 = open('/tmp/outline_output.md').read()
-mystery = (BASE_DIR / "MYSTERY.md").read_text()
 
-prompt = f"""Here are the first 17 chapters of a 24-chapter outline for "The Second Son of the House of Bells."
+def main():
+    part1_path = Path('/tmp/outline_output.md')
+    outline_path = BASE_DIR / "outline.md"
+    if part1_path.exists():
+        part1 = part1_path.read_text()
+    elif outline_path.exists():
+        part1 = outline_path.read_text()
+    else:
+        print("ERROR: Neither /tmp/outline_output.md nor outline.md found.", file=sys.stderr)
+        sys.exit(1)
+
+    mystery = (BASE_DIR / "MYSTERY.md").read_text() if (BASE_DIR / "MYSTERY.md").exists() else ""
+
+    prompt = f"""Here are the first 17 chapters of a 24-chapter outline for "The Second Son of the House of Bells."
 The outline was cut off mid-chapter-17. Continue from where it left off, then complete chapters 18-24,
 then write the Foreshadowing Ledger.
 
@@ -77,6 +73,10 @@ REMEMBER:
 - At least one quiet chapter in the back half
 """
 
-print("Calling writer model...", file=sys.stderr)
-result = call_writer(prompt)
-print(result)
+    print("Calling writer model...", file=sys.stderr)
+    result = call_writer(prompt)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
