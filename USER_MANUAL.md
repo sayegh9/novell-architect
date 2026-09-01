@@ -23,6 +23,11 @@ Start the local server with one command:
 ```
 Open your browser at **`http://127.0.0.1:8000`**.
 
+### 3. Multilingual Support (English & العربية)
+* Click the **🌐 Language Button** in the top bar to toggle between **English** and **العربية (RTL)**.
+* In Arabic mode, the studio automatically switches to Right-to-Left (RTL) orientation with Arabic typography (*Cairo*, *Amiri*, and *IBM Plex Sans Arabic*).
+
+
 ---
 
 ## 📖 Step-by-Step Writing Workflow
@@ -151,6 +156,61 @@ In the Web UI, click the **"Run Pipeline"** button in the top navigation bar at 
 
 ---
 
+## 🔄 How to Reset & Start a New Novel
+
+When you want to start a brand-new book from a fresh concept:
+
+### Option A: Via the Web UI (One Click)
+1. In the top navigation bar, click the **"New Novel / Reset"** button.
+2. A confirmation modal will appear. Your existing novel, drafts, and evaluation logs are **automatically archived** to `archive/novel_[timestamp]/`.
+3. Check **"Keep current seed.txt"** if you want to keep your premise, or leave it unchecked to start with a blank starter template.
+4. Click **"Archive & Reset"**.
+5. The studio returns to Phase 1 (Foundation) with 0 chapters. Enter your new premise in the **Seed Studio** and begin!
+
+### Option B: Via the Terminal CLI
+Run the dedicated reset script:
+```bash
+# Safely archive current drafts to archive/ and reset state to Foundation:
+python3 reset_project.py
+
+# Keep your current seed.txt premise while clearing chapters & logs:
+python3 reset_project.py --keep-seed
+
+# Start the full pipeline immediately from scratch:
+python3 run_pipeline.py --from-scratch
+```
+
+---
+
+## 🚀 Advanced Studio Features & Capabilities
+
+### 1. Interactive Cut Applicator & Revision Briefs Hub (Phase 3)
+- **Interactive Adversarial Cuts**: Browse fat-elimination targets extracted by the judge model. Selectively check off quotes and click **"Apply Selected Cuts to Chapter"** to excise repetitive prose and tighten narrative density.
+- **Revision Briefs & Chapter Rewriting**:
+  - Generate structured revision briefs (`briefs/ch_XX_brief.md`) combining reader panel critiques and adversarial cuts.
+  - Edit revision instructions in the live editor and save changes.
+  - Click **"Rewrite Chapter from Brief"** (`gen_revision.py`) to execute a full rewrite with strict voice continuity.
+
+### 2. Novel Convergence Analytics & Quality Heatmap
+- Access via the **"Quality Analytics" (تحليلات الجودة والتطور)** sidebar tab.
+- **Per-Chapter Quality Matrix**: Live cards displaying word counts, reading times, evaluation scores, fat percentages, and Elo tournament ratings.
+- **Convergence History**: Visual trajectory tracking scores across Git commit iterations from `results.tsv`.
+
+### 3. Voice Fingerprint Studio (Phase 1)
+- Located in the **Foundation & World Hub** under `voice.md`.
+- Computes sentence length variance (CV), dialogue ratio, rhythm, and sensory vocabulary wells (Body / Sensory / Trade).
+- **Custom Sample Analyzer**: Paste reference prose or excerpts to extract and inspect quantitative voice metrics.
+
+### 4. Engine Settings & Model Switcher (⚙️ Topbar)
+- Click **"Engine Settings" (إعدادات المحرك)** in the topbar to configure:
+  - **Writer Model**: Switch between `gemini-2.5-pro` (deep literary reasoning) and `gemini-2.5-flash` (ultra-fast drafting).
+  - **Judge Model**: Select evaluation and adversarial cut model.
+  - **Creativity Temperature**: Interactive slider (0.1 to 1.0) with real-time feedback.
+  - **Target Chapter Length**: Select 2,500w, 3,500w, or 5,000w.
+  - **Language Mode**: Toggle between Arabic Literary and English Fiction.
+
+---
+
 ## 🛠️ Troubleshooting & Tips
 
 | Issue | Cause | Solution |
@@ -159,3 +219,5 @@ In the Web UI, click the **"Run Pipeline"** button in the top navigation bar at 
 | **"Operation not permitted"** | Sandboxed server with network disabled. | Launch `server.py` or `./start_studio.sh` with network permissions enabled. |
 | **"arc_summary.md not found"** | Running `reader_panel.py` before chapters were summarized. | `reader_panel.py` now automatically invokes `build_arc_summary.py` if missing. |
 | **Rate Limits (429)** | High token throughput on Gemini Pro. | `llm.py` includes built-in retries. You can customize `AUTONOVEL_WRITER_MODEL=gemini-2.5-flash` in `.env` for faster drafts. |
+
+

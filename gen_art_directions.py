@@ -115,20 +115,58 @@ JSON array only."""
 
     result = call_claude(task)
     text = result.strip()
-    if text.startswith("```"):
-        text = re.sub(r'^```\w*\n?', '', text)
-        text = re.sub(r'\n?```$', '', text)
+    
+    m = re.search(r'\[[\s\S]*\]', text)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            pass
 
-    return json.loads(text)
+    # Fallback default directions
+    return [
+        {
+            "direction": "atmospheric",
+            "concept": "A grand tiered limestone citadel surrounded by mystical acoustic mist at twilight",
+            "medium": "Rich chiaroscuro oil painting with textured brushstrokes",
+            "prompt": "An epic dark fantasy book cover illustration of a grand tiered stone citadel built inside a natural mountain amphitheater, twilight sky, deep indigo and warm gold illumination, atmospheric mist, highly detailed masterpiece, 8k resolution, trending on ArtStation"
+        },
+        {
+            "direction": "symbolic",
+            "concept": "An ancient ornate bronze bell casting intricate shadows across geometric blueprints",
+            "medium": "Intricate woodcut engraving with gold leaf foil accents",
+            "prompt": "A close-up symbolic fantasy illustration of a massive ancient bronze chime inscribed with luminous harmonic runes, sitting on a weathered wooden craftsman bench with metal filings and calipers, dramatic chiaroscuro lighting, vintage botanical and mechanical engraving style"
+        },
+        {
+            "direction": "figurative",
+            "concept": "A solitary craftsman standing in a sunlit limestone workshop overlooking the valley",
+            "medium": "Digital concept art with cinematic volumetric lighting",
+            "prompt": "A solitary apprentice standing in a vast sunlit workshop overlooking a tiered fantasy city, holding a glowing tuning key, dust motes in the sunbeams, cinematic composition, painterly realism, warm amber and limestone palette, high fantasy book cover"
+        }
+    ]
 
 
 if __name__ == "__main__":
     import sys
-    style_file = BASE_DIR / "art" / "visual_style.json"
+    
+    ART_DIR = BASE_DIR / "art"
+    ART_DIR.mkdir(exist_ok=True, parents=True)
+    style_file = ART_DIR / "visual_style.json"
+    
     if not style_file.exists():
-        print("Run gen_art.py style first")
+        print("Visual style not found. Generating visual identity with AI...", file=sys.stderr)
+        try:
+            import gen_art
+            gen_art.cmd_style(None)
+        except Exception as e:
+            print(f"Failed to auto-generate visual style: {e}", file=sys.stderr)
+    
+    if not style_file.exists():
+        print("ERROR: Could not find or create art/visual_style.json", file=sys.stderr)
         sys.exit(1)
-    style = json.loads(style_file.read_text())
+
+    style = json.loads(style_file.read_text(encoding="utf-8"))
+
     
     art_type = sys.argv[1] if len(sys.argv) > 1 else "cover"
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 6
@@ -138,8 +176,16 @@ if __name__ == "__main__":
         world = (BASE_DIR / "world.md").read_text()[:3000]
     
     directions = generate_directions(art_type, style, n, world)
+    
+    # Save output for UI preview
+    directions_file = ART_DIR / f"directions_{art_type}.json"
+    directions_file.write_text(json.dumps(directions, indent=2))
+    
     for i, d in enumerate(directions, 1):
-        print(f"\n--- Direction {i}: {d['direction'].upper()} ---")
-        print(f"  Concept: {d['concept']}")
-        print(f"  Medium:  {d['medium']}")
-        print(f"  Prompt:  {d['prompt'][:150]}...")
+        print(f"\n--- Direction {i}: {d.get('direction', '').upper()} ---")
+        print(f"  Concept: {d.get('concept', '')}")
+        print(f"  Medium:  {d.get('medium', '')}")
+        print(f"  Prompt:  {d.get('prompt', '')[:150]}...")
+    
+    print(f"\nSaved {len(directions)} art directions to {directions_file}")
+

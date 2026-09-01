@@ -1,0 +1,4 @@
+timestamp	phase	score	words	keep_discard	description
+1278b56	rev-ch01	7.7	1009	keep	Cycle 1: missing_scene improved 7.7->7.7
+09bc05a	revision-cycle-1	-1.0	1009	cycle	Cycle 1: novel_score 0.0->-1.0
+f6cd873	export	-1.0	1009	export	Final export

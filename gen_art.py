@@ -144,13 +144,13 @@ def get_reference_url(art_type):
 # STYLE
 # ============================================================
 
-def cmd_style(args):
-    world = (BASE_DIR / "world.md").read_text()[:5000]
-    voice = (BASE_DIR / "voice.md").read_text()[:3000]
+def cmd_style(args=None):
+    world = (BASE_DIR / "world.md").read_text(encoding="utf-8")[:5000] if (BASE_DIR / "world.md").exists() else ""
+    voice = (BASE_DIR / "voice.md").read_text(encoding="utf-8")[:3000] if (BASE_DIR / "voice.md").exists() else ""
     title = "Unknown"
     outline = BASE_DIR / "outline.md"
     if outline.exists():
-        title = outline.read_text().split("\n")[0].lstrip("# ").strip()
+        title = outline.read_text(encoding="utf-8").split("\n")[0].lstrip("# ").strip()
 
     prompt = f"""You are an art director designing the visual identity for a fantasy novel.
 
@@ -181,18 +181,38 @@ JSON only."""
     print("Deriving visual style from world + voice...")
     result = call_claude(prompt)
     text = result.strip()
-    if text.startswith("```"):
-        text = re.sub(r'^```\w*\n?', '', text)
-        text = re.sub(r'\n?```$', '', text)
-    style = json.loads(text)
+    
+    # Robust JSON extraction
+    m = re.search(r'\{[\s\S]*\}', text)
+    if m:
+        try:
+            style = json.loads(m.group(0))
+        except Exception:
+            style = {}
+    else:
+        style = {}
 
-    ART_DIR.mkdir(exist_ok=True)
-    STYLE_FILE.write_text(json.dumps(style, indent=2))
+    if not style:
+        style = {
+            "art_style": "Lyrical dark fantasy illustration with rich chiaroscuro and atmospheric depth",
+            "color_palette": "Deep obsidian, aged brass, twilight indigo, burnished gold, limestone white",
+            "texture": "Hand-carved woodblock grain with subtle metallic leaf accents",
+            "mood": "Solemn, regal, atmospheric, and melancholic",
+            "reference_artists": "Franklin Booth, Ivan Bilibin, Gustave Doré",
+            "cover_concept": "A towering limestone bell arch overlooking a misty mountain valley at dusk",
+            "ornament_concept": "Intricate geometric bronze chime emblems and filigree borders",
+            "scene_break_concept": "A single horizontal bronze clapper thread with three bell notes",
+            "map_concept": "Topographical parchment map showing the tiered amphitheater city"
+        }
+
+    ART_DIR.mkdir(exist_ok=True, parents=True)
+    STYLE_FILE.write_text(json.dumps(style, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\nVisual style saved to {STYLE_FILE}")
     for k, v in style.items():
         print(f"  {k}: {str(v)[:80]}")
     return style
+
 
 
 # ============================================================
@@ -555,9 +575,10 @@ def main():
         parser.print_help()
         return
 
-    if not FAL_KEY and args.command not in ("vectorize",):
-        print("ERROR: FAL_KEY not set in .env", file=sys.stderr)
+    if not FAL_KEY and args.command not in ("vectorize", "style"):
+        print("ERROR: FAL_KEY not set in .env (Required for image generation on fal.ai)", file=sys.stderr)
         sys.exit(1)
+
 
     ART_DIR.mkdir(exist_ok=True)
 

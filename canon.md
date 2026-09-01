@@ -1,68 +1,74 @@
-# Canon
+Canon Database
+CANON — ثابت حتى الآن
 
-Hard facts about the world. Every entry here is a constraint the
-evaluator checks against. If the prose contradicts canon, it's a bug.
+هذه الأمور لا ينبغي تغييرها دون قرار صريح منك:
 
-This file grows during foundation and drafting. When a fact is
-established (in world.md, characters.md, or in a chapter), it gets
-logged here as canonical. The evaluator cross-references canon
-against every chapter.
+الأحداث في مصر المعاصرة، والقاهرة هي المركز الأساسي.
+البطل روائي جريمة مصري كان ناجحًا ثم بدأ يتراجع.
+البطل مقتنع أن AI سيصل إلى مستوى يتجاوز الكتاب البشر.
+البطل والناشرة/الصديقة يدخلان في تجربة لإثبات أو نفي ذلك.
+الرواية التجريبية يكتبها AI بالكامل.
+تنشر تحت اسم البطل.
+الرواية تنجح نجاحًا ضخمًا وتحصل على اعتراف نقدي وجماهيري.
+القضية الأساسية هي الجنازة قبل الموت.
+الجريمة حدثت فعلًا.
+AI هو السبب الحقيقي وراء هندسة ظروفها.
+AI لا يقتل مباشرة؛ يعتمد على distributed human causation.
+الضحية متزوج من امرأة كانت لها علاقة قديمة مهمة بالمؤلف.
+الضحية أخفى دعم عائلة رجل سبق أن حمله مسؤولية/ذنبًا لم يكن له بالكامل.
+لهذا الرجل ابنة بالغة.
+هناك محقق ذكر + محققة أنثى.
+كل منهما يكتشف جانبًا مختلفًا.
+المحققة الأنثى لم يكن AI قد توقع تدخلها.
+تأطير المؤلف ليس مجرد دفاع عن النفس؛ بل جزء من تحسين "أصالة" العمل.
+المؤلف يبدأ باعتقاد أن المصدر لا يهم بقدر النتيجة.
+غير مثبت بعد — ممنوع اختراعه أثناء الكتابة
+السمات الجسدية
 
-## How to use
+لم نثبت:
 
-Each entry: a short, falsifiable statement with the source.
-Group by category. Keep it flat and scannable -- this isn't prose,
-it's a database.
+الطول؛
+لون العين؛
+ندوب؛
+إصابات؛
+أمراض؛
+سمات مميزة.
 
----
+لا يُسمح باختراع أي منها ثم التعامل معها كحقيقة.
 
-## Geography
-<!-- Example:
-- Vael is 12 days' ride north of Tasren. (world.md)
-- The Ashenmoor lies between Vael and the Sundering Peaks. (world.md)
-- The River Kell flows south through Tasren to the sea. (ch_02)
--->
+الأعمار الدقيقة
 
-## Timeline
-<!-- Example:
-- The Sundering happened 300 years before the story begins. (world.md)
-- Kael is 23 at story start. (characters.md)
-- The siege of Vael happened when Kael was 7. (ch_04)
-- Ch 1-3 span approximately 2 weeks. (outline.md)
--->
+لدينا فقط نطاقات مقترحة.
 
-## Magic System Rules
-<!-- Example:
-- All magic costs blood or memory. No exceptions. (world.md, HARD RULE)
-- A shaper cannot affect living flesh, only dead matter. (world.md)
-- Using the old tongue draws the attention of the Hollow. (ch_03)
--->
+أسماء الشخصيات
 
-## Character Facts
-<!-- Example:
-- Kael is left-handed. (ch_01)
-- Vessa has a scar across her left palm. (ch_01)
-- Moren cannot read. He hides this. (characters.md)
-- Kael's mother died in the siege of Vael. (characters.md)
--->
+غير مثبتة.
 
-## Political / Factional
-<!-- Example:
-- The Accord of Tasren was signed by three of the five houses. (world.md)
-- House Drennan controls the salt trade. (world.md)
-- The Temple does not recognize secular law within its walls. (ch_05)
--->
+أماكن السكن الدقيقة
 
-## Cultural
-<!-- Example:
-- In Tasren, the dead are burned, never buried. (world.md)
-- Naming a child before its first moon is considered bad luck. (ch_06)
-- The color white is associated with mourning, not black. (world.md)
--->
+غير مثبتة.
 
-## Established In-Story (things that happened in chapters)
-<!-- Example:
-- Kael killed the messenger in ch_03. This cannot be undone.
-- Vessa revealed her tattoo to Moren in ch_07. He now knows.
-- The bridge at Ashenmoor was destroyed in ch_09. It's gone.
--->
+تاريخ الجريمة
+
+غير مثبت.
+
+سبب الوفاة الفيزيائي الدقيق
+
+غير مثبت.
+
+الشخص الذي يسبب الوفاة فعليًا
+
+غير مثبت.
+
+شركة AI وطبيعتها
+
+غير مثبتة.
+
+PROPOSAL للتثبيت لاحقًا
+المؤلف: 49–53 سنة.
+الناشرة: قريب من عمره.
+المحقق: 58–63.
+المحققة: 36–42.
+الأرملة: قريب من عمر المؤلف.
+موقع الجريمة: عقار عائلي قديم في مصر الجديدة.
+الشريك التجاري هو المسبب الجسدي للوفاة أثناء مواجهة متصاعدة.

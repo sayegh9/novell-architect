@@ -1,157 +1,139 @@
-# Voice Profile
+الطابع العام
 
-This file has two parts:
-1. **Guardrails** -- universal rules to avoid AI-generated slop. These
-   apply to ALL voices and are non-negotiable.
-2. **Voice Identity** -- the specific voice for THIS novel. Generated
-   during the foundation phase. Could be anything: dense and mythic,
-   spare and brutal, warm and whimsical. The voice emerges from the
-   story's needs.
+النثر يجب أن يكون:
 
----
+معاصرًا؛
+دقيقًا؛
+نفسيًا؛
+غير استعراضي؛
+حسيًا عندما يخدم وجهة النظر؛
+ذكيًا دون التباهي بالذكاء؛
+قادرًا على حمل الفلسفة من خلال الحدث.
+القاعدة:
 
-## Part 1: Guardrails (permanent, all novels)
+لا يشرح الراوي فكرة تستطيع الشخصية أن تدفع ثمنها دراميًا.
 
-These are the cliff edges. Stay away from them regardless of voice.
+ممنوعات لغوية
 
-### Tier 1: Banned words -- kill on sight
+تجنب التكرار الميكانيكي لعبارات مثل:
 
-These are statistically overrepresented in LLM output vs. human writing.
-If one appears, rewrite the sentence. No exceptions.
+"ساد صمت ثقيل."
+"كان التوتر ملموسًا."
+"نظرة ذات مغزى."
+"ابتسم بسخرية."
+"شعر بقشعريرة تسري في جسده."
+"لم يكن يعلم أن حياته على وشك أن تتغير."
+"في تلك اللحظة أدرك..."
+"شيء ما بدا غير صحيح."
+"كانت تلك بداية النهاية."
+"كأن الزمن توقف."
+"رقصة خطرة بين..."
+"دليل على..."
+"شهادة على..."
+"مزيج غريب من..."
+"صمت يقول أكثر من الكلمات."
 
-| Kill this         | Use instead                                    |
-|-------------------|------------------------------------------------|
-| delve             | dig into, examine, look at                     |
-| utilize           | use                                            |
-| leverage (verb)   | use, take advantage of                         |
-| facilitate        | help, enable, make possible                    |
-| elucidate         | explain, clarify                               |
-| embark            | start, begin                                   |
-| endeavor          | effort, try                                    |
-| encompass         | include, cover                                 |
-| multifaceted      | complex, varied                                |
-| tapestry          | (describe the actual thing)                    |
-| testament to      | shows, proves, demonstrates                    |
-| paradigm          | model, approach, framework                     |
-| synergy           | (delete the sentence and start over)           |
-| holistic          | whole, complete, full-picture                  |
-| catalyze          | trigger, cause, spark                          |
-| juxtapose         | compare, contrast, set against                 |
-| nuanced (filler)  | (cut it -- if it's nuanced, show how)          |
-| realm             | area, field, domain                            |
-| landscape (metaphorical) | field, space, situation                 |
-| myriad            | many, lots of                                  |
-| plethora          | many, a lot                                    |
+ليس لأنها محرمة دائمًا، بل لأنها تتحول بسهولة إلى لغة AI عامة.
 
-### Tier 2: Suspicious in clusters
+آبار المفردات thematic wells
+عالم الجريمة
+محضر.
+إفادة.
+زمن.
+دافع.
+فرصة.
+مسار.
+دليل.
+أثر.
+تناقض.
+شاهد.
+رواية.
+سلسلة.
+ملف.
+إعادة بناء.
+عالم المعلومات
+مصدر.
+نسخة.
+انتقال.
+شبكة.
+عقدة.
+توقيت.
+سجل.
+أثر رقمي.
+احتمالية.
+سياق.
+نمط.
+عالم الكتابة
+مسودة.
+حذف.
+بناء.
+منظور.
+حبكة.
+شخصية.
+قارئ.
+إيقاع.
+فصل.
+مراجعة.
+مصدر.
+مؤلف.
 
-Fine alone. Three in one paragraph = rewrite that paragraph.
+هذه المجالات الثلاثة يجب أن تبدأ في التداخل تدريجيًا.
 
-robust, comprehensive, seamless, cutting-edge, innovative, streamline,
-empower, foster, enhance, elevate, optimize, pivotal, intricate,
-profound, resonate, underscore, harness, navigate (metaphorical),
-cultivate, bolster, galvanize, cornerstone, game-changer, scalable
+إيقاع الجمل
 
-### Tier 3: Filler phrases -- delete on sight
+لا أنصح بقاعدة ميكانيكية مثل:
 
-These add zero information. The sentence is always better without them.
+جملة 5 كلمات ثم جملة 35 كلمة.
 
-- "It's worth noting that..." -> just state it
-- "It's important to note that..." -> just state it
-- "Importantly, ..." / "Notably, ..." / "Interestingly, ..." -> just state it
-- "Let's dive into..." / "Let's explore..." -> start with the content
-- "As we can see..." -> they can see
-- "Furthermore, ..." / "Moreover, ..." / "Additionally, ..." -> and, also, or just start
-- "In today's [fast-paced/digital/modern] world..." -> delete the clause
-- "At the end of the day..." -> delete
-- "It goes without saying..." -> then don't say it
-- "When it comes to..." -> just talk about the thing
-- "One might argue that..." -> argue it or don't
-- "Not just X, but Y" -> restructure (the #1 LLM rhetorical crutch)
+هذا سينتج إيقاعًا صناعيًا.
 
-### Structural slop patterns
+الأفضل:
 
-These are the shapes that betray machine origin. Avoid them in any voice.
+أثناء التحقيق/الخطر
+جمل أقصر.
+أفعال أكثر.
+تفسير أقل.
+أثناء التفكير الأخلاقي
+جمل أطول قليلًا.
+علاقات سببية.
+تراكيب تتراكم ثم تنقلب.
+أثناء اكتشاف كبير
 
-**Paragraph template machine**: Don't repeat the same paragraph
-structure (topic sentence -> elaboration -> example -> wrap-up).
-Vary it. Sometimes the point comes last. Sometimes a paragraph is
-one sentence. Sometimes three long ones in a row.
+لا تشرح الاكتشاف مباشرة لثلاث فقرات.
 
-**Sentence length uniformity**: If every sentence is 15-25 words,
-it reads as synthetic. Mix in fragments. And long, winding,
-clause-heavy sentences that carry the reader through a thought
-the way a river carries a leaf. Then a short one.
+اترك:
 
-**Transition word addiction**: If consecutive paragraphs start with
-"However," "Furthermore," "Additionally," "Moreover," "Nevertheless"
--- rewrite. Start with the subject. Start with action. Start with
-dialogue. Start with a sense detail.
+حقيقة قصيرة → استجابة → نتيجة.
 
-**Symmetry addiction**: Don't balance everything. Three pros, three
-cons, five steps -- that's a tell. Real writing is lumpy. Some
-sections are long because they need to be. Some are two lines.
+انضباط الحوار
 
-**Hedge parade**: "may," "might," "could potentially," "it's possible
-that" -- pick one per page, max. State things or don't.
+هدف عملي:
 
-**Em dash overload**: One or two per page is fine. Five per paragraph
-is a dead giveaway. Use commas, parentheses, or two sentences instead.
+25–35% تقريبًا من معظم المشاهد.
 
-**List abuse**: Prose, not bullets. If the scene calls for a list
-(a merchant's inventory, a spell's components), earn it. Don't
-default to bullet points because it's easy.
+لكن لا أجعله قانونًا.
 
-### The smell test
+مشهد استجواب ممتاز قد يصل إلى 45%.
 
-After writing any passage, ask:
-- Read it aloud. Does it sound like a person talking?
-- Is there a single surprising sentence? Human writing surprises.
-- Does it say something specific? Could you swap the topic and the
-  words would still work? Specificity kills slop.
-- Would a reader think "AI wrote this"? If yes, rewrite.
+الأهم:
 
----
+كل متحدث يريد شيئًا.
+لا أحد يشرح ما يعرفه الآخر.
+لا يستخدم الحوار لشرح موضوع AI للقارئ.
+الفلسفة تظهر في خلاف حقيقي على قرار.
+قاعدة خاصة بالـAI
 
-## Part 2: Voice Identity (generated per novel)
+لا نجعله يتحدث مثل:
 
-Everything below is discovered during the foundation phase.
-The agent proposes a voice that serves THIS story, writes exemplar
-passages, and calibrates against them throughout drafting.
+شرير فلسفي بليغ.
 
-### Tone
-<!-- Generated during foundation. Examples:
-     "Mythic and weighty, like stone tablets being read aloud."
-     "Warm, slightly breathless, like a traveler telling stories by firelight."
-     "Spare and cold. Sentences like knife cuts." -->
+يجب أن تبقى لغته:
 
-### Sentence Rhythm
-<!-- Generated during foundation. Not rules -- tendencies.
-     "Long sentences for worldbuilding, short for violence."
-     "Dialogue is clipped. Narration flows." -->
+واضحة؛
+منطقية؛
+مفيدة؛
+أحيانًا مقنعة جدًا.
 
-### Vocabulary Register
-<!-- Generated during foundation. The word-hoard for this world.
-     What does this world SOUND like? Anglo-Saxon blunt? Latinate
-     baroque? Colloquial modern? A mix? -->
+الرعب يأتي من:
 
-### POV and Tense
-<!-- Generated during foundation.
-     Third limited? First? Rotating? Omniscient?
-     Past tense? Present? Does it shift for effect? -->
-
-### Dialogue Conventions
-<!-- Generated during foundation.
-     Tags: "said" only? Action beats? No tags at all?
-     How do characters sound different from each other?
-     Subtext rules: do characters say what they mean? -->
-
-### Exemplar Passages
-<!-- 3-5 paragraphs that ARE the voice. Written during foundation.
-     The agent calibrates every chapter against these.
-     These are the tuning fork. -->
-
-### Anti-Exemplars
-<!-- 3-5 paragraphs showing what this voice is NOT.
-     Not the generic anti-slop stuff above -- specific to this novel.
-     "This is too flowery for our tone." "This is too modern." -->
+صحة منطقه داخل هدف خاطئ.

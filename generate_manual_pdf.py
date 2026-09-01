@@ -1,0 +1,895 @@
+#!/usr/bin/env python3
+"""
+generate_manual_pdf.py -- Generates a luxury, non-technical, visually stunning
+User Manual and Creative Guide for Autonovel Studio.
+"""
+import os
+import sys
+import subprocess
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+OUTPUT_HTML = BASE_DIR / "manual.html"
+OUTPUT_PDF = BASE_DIR / "Autonovel_Studio_User_Manual.pdf"
+
+HTML_CONTENT = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Autonovel Studio — The Author's Creative Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cinzel:wght@600;700;800;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 1.6cm 1.4cm 1.8cm 1.4cm;
+    @bottom-right {
+      content: "Page " counter(page);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 7.5pt;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    @bottom-left {
+      content: "Autonovel Studio • The Author's Creative Handbook";
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 7.5pt;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+  }
+
+  *, *:before, *:after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #1e293b;
+    background: #ffffff;
+    line-height: 1.6;
+    font-size: 9.5pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Cover Page */
+  .cover {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 2.8cm 1.8cm 2cm 1.8cm;
+    page-break-after: always;
+    background: radial-gradient(circle at top right, #1e2235 0%, #090b10 70%);
+    color: #ffffff;
+    border-radius: 16px;
+    margin-bottom: 2cm;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cover:before {
+    content: "";
+    position: absolute;
+    top: -50px;
+    right: -50px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0) 70%);
+    border-radius: 50%;
+  }
+
+  .cover-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .cover-logo {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-size: 30pt;
+    font-weight: 900;
+    color: #090b10;
+    box-shadow: 0 12px 30px rgba(245, 158, 11, 0.4);
+  }
+
+  .cover-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+    border-radius: 20px;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .cover-title {
+    font-family: 'Cinzel', serif;
+    font-size: 32pt;
+    font-weight: 900;
+    line-height: 1.15;
+    margin: 30px 0 15px 0;
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, #ffffff 0%, #fbbf24 75%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .cover-subtitle {
+    font-family: 'EB Garamond', serif;
+    font-size: 15pt;
+    font-style: italic;
+    color: #cbd5e1;
+    line-height: 1.5;
+    max-width: 90%;
+  }
+
+  .cover-desc {
+    font-size: 10pt;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin-top: 20px;
+    max-width: 85%;
+  }
+
+  .cover-meta {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    font-size: 8.5pt;
+  }
+
+  .cover-meta-label {
+    text-transform: uppercase;
+    font-size: 7pt;
+    color: #f59e0b;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 3px;
+  }
+
+  .cover-meta-value {
+    color: #f8fafc;
+    font-weight: 600;
+  }
+
+  /* Headings */
+  h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 18pt;
+    color: #0f172a;
+    border-bottom: 2px solid #f59e0b;
+    padding-bottom: 6px;
+    margin-top: 28px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 12.5pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+
+  h3 {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #b45309;
+    margin-top: 14px;
+    margin-bottom: 5px;
+  }
+
+  p {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #334155;
+    text-align: justify;
+    line-height: 1.65;
+  }
+
+  /* Visual Journey Roadmap */
+  .roadmap-container {
+    background: #090b10;
+    border: 1px solid #1e2538;
+    border-radius: 14px;
+    padding: 20px;
+    margin: 18px 0;
+    color: #f8fafc;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  }
+
+  .roadmap-title {
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 12pt;
+    font-weight: 800;
+    color: #fbbf24;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .roadmap-steps {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+  }
+
+  .roadmap-steps:before {
+    content: "";
+    position: absolute;
+    top: 24px;
+    left: 40px;
+    right: 40px;
+    height: 3px;
+    background: linear-gradient(90deg, #f59e0b, #10b981, #38bdf8, #a855f7);
+    z-index: 1;
+  }
+
+  .roadmap-card {
+    position: relative;
+    z-index: 2;
+    background: #121622;
+    border: 1px solid #232b40;
+    border-radius: 12px;
+    padding: 12px 10px;
+    width: 18%;
+    text-align: center;
+  }
+
+  .roadmap-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #f59e0b;
+    color: #090b10;
+    font-weight: 800;
+    font-size: 11pt;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px auto;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+  }
+
+  .roadmap-step-name {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 4px;
+  }
+
+  .roadmap-step-desc {
+    font-size: 6.8pt;
+    color: #94a3b8;
+    line-height: 1.35;
+  }
+
+  /* 5-Layer Pyramid Grid */
+  .layers-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  .layer-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-top: 4px solid #f59e0b;
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+  }
+
+  .layer-num {
+    font-size: 7.5pt;
+    font-weight: 800;
+    color: #b45309;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .layer-title {
+    font-size: 9pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 3px 0 6px 0;
+  }
+
+  .layer-desc {
+    font-size: 7.5pt;
+    color: #64748b;
+    line-height: 1.4;
+  }
+
+  /* Callout & Persona Cards */
+  .callout {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #f59e0b;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 9.2pt;
+  }
+
+  .callout-title {
+    font-weight: 700;
+    color: #b45309;
+    margin-bottom: 4px;
+    font-size: 9.8pt;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .callout-emerald {
+    border-left-color: #10b981;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+  .callout-emerald .callout-title { color: #047857; }
+
+  .personas-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+  }
+
+  .persona-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  }
+
+  .persona-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 6px;
+  }
+
+  .persona-avatar {
+    font-size: 20pt;
+  }
+
+  .persona-name {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .persona-role {
+    font-size: 7.5pt;
+    color: #b45309;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .persona-focus {
+    font-size: 8pt;
+    color: #475569;
+    line-height: 1.45;
+  }
+
+  /* Comparison Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 8.8pt;
+  }
+
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+    text-align: left;
+    padding: 9px 12px;
+    border: 1px solid #cbd5e1;
+    font-size: 8.2pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  td {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  /* Literary Prose Samples */
+  .prose-sample {
+    font-family: 'EB Garamond', serif;
+    font-size: 11.5pt;
+    line-height: 1.8;
+    color: #1e293b;
+    background: #fdfbf7;
+    border: 1px solid #f1ece1;
+    border-left: 4px solid #b45309;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-style: italic;
+  }
+
+  .arabic-sample {
+    font-family: 'Amiri', serif;
+    direction: rtl;
+    text-align: justify;
+    font-size: 12pt;
+    line-height: 2.0;
+    color: #1e293b;
+    background: #fffdf5;
+    border: 1px solid #fef3c7;
+    border-right: 4px solid #f59e0b;
+    border-left: none;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 14px 0;
+  }
+
+  /* Step Card Components */
+  .step-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 14px 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .step-badge {
+    background: #fef3c7;
+    color: #b45309;
+    font-size: 8pt;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+
+  .step-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #0f172a;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <div>
+    <div class="cover-header">
+      <div class="cover-logo">A</div>
+      <div>
+        <div class="cover-badge">The Author's Creative Handbook</div>
+      </div>
+    </div>
+    <div class="cover-title">AUTONOVEL STUDIO</div>
+    <div class="cover-subtitle">
+      A Complete Guide to Autonomous Literary Worldbuilding, Multi-Chapter Drafting, Adversarial Revision, and Beautiful Typesetting.
+    </div>
+    <div class="cover-desc">
+      How to transform a single high-concept idea into a complete, publication-ready 80,000-word novel with distinctive prose, deep character psychology, and zero "AI slop."
+    </div>
+  </div>
+
+  <div class="cover-meta">
+    <div>
+      <div class="cover-meta-label">Design Aesthetic</div>
+      <div class="cover-meta-value">Meta Astryx Editorial</div>
+    </div>
+    <div>
+      <div class="cover-meta-label">Target Length</div>
+      <div class="cover-meta-value">Full Novel (60,000–90,000 words)</div>
+    </div>
+    <div>
+      <div class="cover-meta-label">Language Editions</div>
+      <div class="cover-meta-value">Classical Arabic (فصحى) & English</div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 1: THE CREATIVE PHILOSOPHY -->
+<h1>1. The Creative Journey & Engine Philosophy</h1>
+
+<p>
+  Writing a full-length novel is one of the most demanding creative endeavors. When authors attempt to write long fiction using standard conversational AI tools, they inevitably encounter two major creative walls:
+</p>
+
+<ul>
+  <li><strong>Continuity Amnesia:</strong> By Chapter 10, standard models forget a character's earlier injuries, violate magical limits, or contradict timeline events.</li>
+  <li><strong>Generic "AI Slop":</strong> Standard models default to predictable clichés (<em>"a testament to"</em>, <em>"a delicate dance"</em>, <em>"palpable silence"</em>), excessive melodrama, and repetitive sentence rhythms.</li>
+</ul>
+
+<p>
+  <strong>Autonovel Studio</strong> was engineered specifically to solve these fundamental problems. Inspired by autonomous scientific research loops, it treats a novel as an evolving organism evaluated by rigorous literary critics at every stage.
+</p>
+
+<!-- VISUAL ROADMAP -->
+<div class="roadmap-container avoid-break">
+  <div class="roadmap-title">From Spark to Print: The 5 Creative Milestones</div>
+  <div class="roadmap-steps">
+    <div class="roadmap-card">
+      <div class="roadmap-circle">0</div>
+      <div class="roadmap-step-name">The Seed</div>
+      <div class="roadmap-step-desc">High-concept hook, core tension & the protagonist's lie.</div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-circle">1</div>
+      <div class="roadmap-step-name">Foundation</div>
+      <div class="roadmap-step-desc">World rules, character dossiers & 24-chapter outline.</div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-circle">2</div>
+      <div class="roadmap-step-name">Drafting</div>
+      <div class="roadmap-step-desc">Sequential chapter writing with strict voice guardrails.</div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-circle">3</div>
+      <div class="roadmap-step-name">Revision</div>
+      <div class="roadmap-step-desc">4-tier critique: cuts, reader panel, Elo battles & rewrites.</div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-circle">4</div>
+      <div class="roadmap-step-name">Publication</div>
+      <div class="roadmap-step-desc">Complete manuscript, LaTeX trade paperback & art prompts.</div>
+    </div>
+  </div>
+</div>
+
+<h2>The 5 Co-Evolving Layers of a Novel</h2>
+<p>
+  In Autonovel Studio, a book is structured into five interdependent creative layers. When one layer evolves, the others adapt to maintain total story harmony:
+</p>
+
+<div class="layers-grid avoid-break">
+  <div class="layer-box">
+    <div class="layer-num">Layer 5</div>
+    <div class="layer-title">The Voice</div>
+    <div class="layer-desc"><strong>HOW we write:</strong> Sentence rhythm, sensory vocabulary, anti-slop rules.</div>
+  </div>
+  <div class="layer-box">
+    <div class="layer-num">Layer 4</div>
+    <div class="layer-title">The World</div>
+    <div class="layer-desc"><strong>WHAT exists:</strong> Geography, factions, magic costs, sensory atmosphere.</div>
+  </div>
+  <div class="layer-box">
+    <div class="layer-num">Layer 3</div>
+    <div class="layer-title">Characters</div>
+    <div class="layer-desc"><strong>WHO acts:</strong> Deep psychological flaws, secrets, internal dilemmas.</div>
+  </div>
+  <div class="layer-box">
+    <div class="layer-num">Layer 2</div>
+    <div class="layer-title">The Outline</div>
+    <div class="layer-desc"><strong>WHAT happens:</strong> 24-chapter beats, turning points, pacing curve.</div>
+  </div>
+  <div class="layer-box">
+    <div class="layer-num">Layer 1</div>
+    <div class="layer-title">The Prose</div>
+    <div class="layer-desc"><strong>THE WORDS:</strong> Rich, immersive prose drafted scene by scene.</div>
+  </div>
+</div>
+
+<!-- SECTION 2: STEP-BY-STEP CREATIVE PROCESS -->
+<div class="page-break"></div>
+<h1>2. Step-by-Step: How to Build Your Novel</h1>
+
+<div class="step-card">
+  <div class="step-header">
+    <span class="step-badge">Stage 0</span>
+    <span class="step-title">The Seed Premise: The 4 Creative Pillars</span>
+  </div>
+  <p>
+    Every great novel begins with an unmistakable concept. Rather than a vague plot idea, Autonovel requires four distinct pillars:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Pillar</th>
+        <th style="width: 35%;">Creative Purpose</th>
+        <th style="width: 40%;">Example (The Second Son of the House of Bells)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. World Hook</strong></td>
+        <td>A concrete, sensory element that shapes society.</td>
+        <td>A city built in a limestone amphitheater where pitch governance dictates hierarchy.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Magic & Cost</strong></td>
+        <td>Strict limits and tangible physical/mental prices.</td>
+        <td>Tonal Law binds physical reality, but causes irreversible acoustic hand tremors.</td>
+      </tr>
+      <tr>
+        <td><strong>3. The Central Lie</strong></td>
+        <td>The internal delusion holding the protagonist back.</td>
+        <td><em>"If I remain the humble craftsman in the shadows, I will never have to choose."</em></td>
+      </tr>
+      <tr>
+        <td><strong>4. Core Dilemma</strong></td>
+        <td>Irreconcilable stakes where compromise is impossible.</td>
+        <td>To expose the corrupt hierarchy, he must ring a chord that will shatter his brother's ears.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step-card">
+  <div class="step-header">
+    <span class="step-badge">Stage 1</span>
+    <span class="step-title">Architectural Foundation: Canon vs. Voice</span>
+  </div>
+  <p>
+    Once the seed is planted, the studio generates the comprehensive architectural documents. Two special guides maintain the novel's integrity:
+  </p>
+
+  <div class="avoid-break" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px;">
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+      <h3 style="margin-top: 0; color: #0f172a;">🏛️ The Canon Database (The Law)</h3>
+      <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+        The unshakeable single source of truth. Records character birthmarks, scars, lineage, deaths, and physical travel distances. The drafting engine references this before every chapter to eliminate continuity errors.
+      </p>
+    </div>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+      <h3 style="margin-top: 0; color: #b45309;">🎙️ Voice Guardrails (The Sound)</h3>
+      <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+        The stylistic DNA of your novel. Forbids AI conversational mannerisms, enforces rhythmic variation between short and long sentences, and seeds thematic vocabulary (e.g. bronze, acoustics, limestone).
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="step-card">
+  <div class="step-header">
+    <span class="step-badge">Stage 2</span>
+    <span class="step-title">The Drafting Room: Sequential Scene Creation</span>
+  </div>
+  <p>
+    Chapters are written sequentially (Chapters 1 through 24). The writer model always sees the <strong>Outline Beats</strong> on the left and the <strong>Prose Editor</strong> on the right, ensuring seamless forward momentum.
+  </p>
+  
+  <div class="arabic-sample">
+    <strong>نموذج من السرد الأدبي العربي (رواية: سَيّد العَطَايَا):</strong><br>
+    «لم يكن عبد الجليل يطلب مالاً ولا سلطاناً ظاهراً؛ كان يُعطي كمن يزرع ديناً لا يُرد في الأعناق. في مجلسه الهادئ، وسط عبق العود ورنين كؤوس الشاي، كان صنيع الإحسان يبدو خالصاً لوجه الوفاء، بينما كانت خيوط الولاء تُغزل بدقةٍ متناهية حول كل من جلس بين يديه...»
+  </div>
+</div>
+
+<!-- SECTION 3: THE EDITORIAL LAB -->
+<div class="page-break"></div>
+<h1>3. The Editorial Lab: 4-Tier Revision Surgery</h1>
+
+<p>
+  The true magic of Autonovel is not in the first draft—it is in the <strong>Adversarial Revision Engine</strong>. Every drafted chapter passes through four rigorous editorial lenses:
+</p>
+
+<div class="personas-grid avoid-break">
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-avatar">🧐</div>
+      <div>
+        <div class="persona-name">The Veteran Editor</div>
+        <div class="persona-role">Pacing & Structure Lens</div>
+      </div>
+    </div>
+    <div class="persona-focus">
+      Identifies scene bloat, removes unnecessary preamble, and ensures every chapter ends with a compelling turning point.
+    </div>
+  </div>
+
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-avatar">🐉</div>
+      <div>
+        <div class="persona-name">The Genre Enthusiast</div>
+        <div class="persona-role">Immersion & Stakes Lens</div>
+      </div>
+    </div>
+    <div class="persona-focus">
+      Tests world consistency, magic costs, and thematic atmosphere. Checks if the stakes feel real and dangerous.
+    </div>
+  </div>
+
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-avatar">🖋️</div>
+      <div>
+        <div class="persona-name">The Literary Craftsperson</div>
+        <div class="persona-role">Prose & Sensory Lens</div>
+      </div>
+    </div>
+    <div class="persona-focus">
+      Polishes cadence, replaces passive telling with tactile sensory action, and eliminates repetitive metaphor structures.
+    </div>
+  </div>
+
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-avatar">📖</div>
+      <div>
+        <div class="persona-name">The First Reader</div>
+        <div class="persona-role">Emotional Resonance Lens</div>
+      </div>
+    </div>
+    <div class="persona-focus">
+      Tracks genuine emotional connection, character sympathy, and moments where reader engagement slips.
+    </div>
+  </div>
+</div>
+
+<h2>The 4 Tiers of Editorial Revision</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 25%;">Revision Tier</th>
+      <th style="width: 40%;">Creative Action</th>
+      <th style="width: 35%;">Outcome</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1. Adversarial Cuts</strong></td>
+      <td>Identifies ~500 words of repetitive fluff, clichés, and over-explaining per chapter.</td>
+      <td>Tighter, faster-moving prose that respects the reader's intelligence.</td>
+    </tr>
+    <tr>
+      <td><strong>2. 4-Persona Panel</strong></td>
+      <td>Gathers independent critiques across pacing, world immersion, and character sympathy.</td>
+      <td>Pinpoints exact scenes where narrative momentum drops.</td>
+    </tr>
+    <tr>
+      <td><strong>3. Elo Tournament</strong></td>
+      <td>Pits chapters head-to-head in comparative rankings.</td>
+      <td>Highlights weaker chapters that need creative elevation.</td>
+    </tr>
+    <tr>
+      <td><strong>4. Targeted Rewriting</strong></td>
+      <td>Synthesizes critique consensus into actionable revision briefs and rewrites the chapter.</td>
+      <td>Publication-grade polish achieved through iterative cycles.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- SECTION 4: STUDIO FEATURES -->
+<div class="page-break"></div>
+<h1>4. Studio Workspace Features & Tools</h1>
+
+<p>
+  Autonovel Studio combines the depth of an autonomous pipeline with the tactile control of a luxury writing suite:
+</p>
+
+<div class="avoid-break" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 16px 0;">
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+    <h3 style="margin-top: 0; color: #0f172a;">🌓 Obsidian & Ivory Theming</h3>
+    <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+      Instant switch between <strong>Obsidian Noir</strong> (Dark Mode with champagne gold highlights) for late-night drafting and <strong>Editorial Ivory</strong> (Warm parchment Light Mode) for daytime editing.
+    </p>
+  </div>
+
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+    <h3 style="margin-top: 0; color: #0f172a;">⚡ Command Palette (⌘K)</h3>
+    <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+      Press <code>Cmd+K</code> anywhere to jump instantly to any of the 24 chapters, toggle themes, switch language editions, or launch background generation tasks.
+    </p>
+  </div>
+
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+    <h3 style="margin-top: 0; color: #0f172a;">🧘 Distraction-Free Zen Mode</h3>
+    <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+      Expand your prose editor into a full-screen, focused reading experience with customizable typography sizes (S, M, L, XL) and target word gauges.
+    </p>
+  </div>
+
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;">
+    <h3 style="margin-top: 0; color: #0f172a;">📊 Convergence Telemetry</h3>
+    <p style="font-size: 8.5pt; color: #475569; margin-bottom: 0;">
+      Visual curved trajectory charts mapping novel quality across iterations, alongside a 24-chapter master heatmap showing reading times, fat percentage, and Elo scores.
+    </p>
+  </div>
+</div>
+
+<h2>Publication & Export Deliverables</h2>
+<p>
+  When your novel completes the pipeline, the studio packages everything needed for commercial release:
+</p>
+
+<ul>
+  <li><strong>Unified Master Manuscript:</strong> Clean, complete novel text formatted in standard literary Markdown.</li>
+  <li><strong>Print-Ready Book Typesetting:</strong> Beautiful 6x9 trade paperback layout using classic EB Garamond typography, chapter header ornaments, and elegant scene dividers.</li>
+  <li><strong>Visual Art Direction:</strong> Diverse, curated illustration prompts ready for Midjourney or Flux to create covers and interior artwork.</li>
+  <li><strong>Multi-Voice Audiobook Scripts:</strong> Automatically parsed dialogue with speaker tags and emotion markers ready for voice synthesis.</li>
+</ul>
+
+<div class="callout callout-emerald avoid-break">
+  <div class="callout-title">✨ Ready to Write Your Novel?</div>
+  Open the studio in your browser, craft your seed premise, and watch your world come to life chapter by chapter.
+</div>
+
+</body>
+</html>
+"""
+
+def main():
+    print("Writing updated non-technical HTML manual template...")
+    OUTPUT_HTML.write_text(HTML_CONTENT, encoding="utf-8")
+    print(f"HTML saved to: {OUTPUT_HTML}")
+
+    chrome_bin = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if not Path(chrome_bin).exists():
+        print("Google Chrome binary not found.", file=sys.stderr)
+        sys.exit(1)
+
+    print("Rendering luxury PDF manual via headless Chrome...")
+    cmd = [
+        chrome_bin,
+        "--headless",
+        "--disable-gpu",
+        "--no-pdf-header-footer",
+        f"--print-to-pdf={OUTPUT_PDF}",
+        str(OUTPUT_HTML)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"Error rendering PDF: {res.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    if OUTPUT_PDF.exists() and OUTPUT_PDF.stat().st_size > 1000:
+        size_kb = round(OUTPUT_PDF.stat().st_size / 1024, 1)
+        print(f"✅ Luxury User Manual PDF successfully compiled: {OUTPUT_PDF} ({size_kb} KB)")
+    else:
+        print("Failed to generate valid PDF file.", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

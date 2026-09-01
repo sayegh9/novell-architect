@@ -3,30 +3,124 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-main: #090b10;
+    --bg-surface: #12151f;
+    --bg-surface-elevated: #161b28;
+    --bg-input: #0a0d14;
+    --border-subtle: #1e2436;
+    --border-strong: #2a344d;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-gold: #f59e0b;
+    --accent-gold-glow: rgba(245, 158, 11, 0.18);
+  }
+
+  html.light {
+    --bg-main: #f7f5f0;
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: #faf8f5;
+    --bg-input: #f4f1ea;
+    --border-subtle: #e2ddd3;
+    --border-strong: #cfc8bb;
+    --text-primary: #1e2330;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --accent-gold: #b45309;
+    --accent-gold-glow: rgba(180, 83, 9, 0.15);
+  }
+
   body {
-    @apply bg-[#090b10] text-slate-100 overflow-x-hidden;
-    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
+    overflow-x: hidden;
   }
 }
 
-/* Custom subtle scrollbar */
+/* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d1017;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #23293d;
-  border-radius: 3px;
+  background: var(--border-subtle);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #353d5a;
+  background: var(--border-strong);
 }
 
+/* Literary Prose Typography */
 .prose-literary {
-  font-family: 'EB Garamond', Georgia, serif;
-  font-size: 1.18rem;
-  line-height: 1.85;
+  font-family: 'Playfair Display', 'EB Garamond', Georgia, serif;
+  font-size: 1.22rem;
+  line-height: 1.95;
+  letter-spacing: 0.01em;
+}
+
+/* Arabic RTL Specific Typography */
+html[dir="rtl"] body {
+  font-family: 'Cairo', 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+html[dir="rtl"] .prose-literary {
+  font-family: 'Amiri', 'Traditional Arabic', Georgia, serif;
+  font-size: 1.45rem;
+  line-height: 2.3;
+  text-align: justify;
+}
+
+html[dir="rtl"] input,
+html[dir="rtl"] textarea,
+html[dir="rtl"] select {
+  font-family: 'Cairo', 'IBM Plex Sans Arabic', sans-serif;
+}
+
+/* Astryx Luxury Glass Surfaces */
+.astryx-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.astryx-card:hover {
+  border-color: var(--border-strong);
+}
+
+.astryx-card-elevated {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.astryx-input {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.astryx-input:focus {
+  border-color: var(--accent-gold);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-gold-glow);
+}
+
+.astryx-glass {
+  background: rgba(18, 22, 34, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+}
+
+html.light .astryx-glass {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
 }

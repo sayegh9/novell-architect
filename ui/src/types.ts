@@ -49,3 +49,63 @@ export interface PlanningDoc {
   size: number;
   modified: number | null;
 }
+
+export interface BriefItem {
+  chapter: number;
+  filename: string;
+  content: string;
+  modified?: number;
+}
+
+export interface ChapterMetric {
+  chapter: number;
+  title: string;
+  word_count: number;
+  reading_time_min: number;
+  score: number | null;
+  fat_percentage: number;
+  cuttable_words: number;
+  elo: number;
+}
+
+export interface AnalyticsData {
+  history: Array<{
+    commit: string;
+    phase: string;
+    score: number | null;
+    word_count: number;
+    status: string;
+    description: string;
+  }>;
+  chapters: ChapterMetric[];
+  total_words: number;
+  total_chapters: number;
+  average_chapter_score: number;
+  overall_fat_percentage: number;
+}
+
+export interface VoiceMetricsData {
+  chapters?: Record<string, any>;
+  novel_average?: {
+    word_count?: number;
+    avg_sentence_length?: number;
+    sentence_length_cv?: number;
+    fragments_pct?: number;
+    long_sentences_pct?: number;
+    dialogue_ratio?: number;
+    well_body_pct?: number;
+    well_trade_pct?: number;
+  };
+  sample?: any;
+}
+
+export interface EngineSettings {
+  writer_model: string;
+  judge_model: string;
+  review_model: string;
+  temperature: number;
+  target_words: number;
+  language: string;
+  has_gemini_key: boolean;
+  has_anthropic_key: boolean;
+}

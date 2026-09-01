@@ -17,7 +17,9 @@ import asyncio
 import glob
 import re
 import signal
+import statistics
 from pathlib import Path
+
 from typing import Optional, List, Dict, Any
 
 import uvicorn
@@ -229,7 +231,8 @@ def api_get_chapter(ch_num: int):
         raise HTTPException(status_code=404, detail=f"Chapter {ch_num} not found")
     
     content = ch_path.read_text()
-    title = content.split("\n")[0].lstrip("# ").strip() if content else f"Chapter {ch_num}"
+    raw_first_line = content.split("\n")[0].strip() if content else f"Chapter {ch_num}"
+    title = re.sub(r'^[#\s\*]+|[#\s\*]+$', '', raw_first_line).strip() or f"Chapter {ch_num}"
     
     # Check for cuts in edit_logs
     cuts_file = BASE_DIR / "edit_logs" / f"ch{ch_num:02d}_cuts.json"
@@ -327,6 +330,463 @@ def api_get_edit_logs():
         "reviews": reviews,
         "cuts": cuts,
     }
+
+
+# ============================================================================
+# Editorial, Cuts & Briefs Endpoints
+# ============================================================================
+
+class ApplyCutsCustomRequest(BaseModel):
+    chapter: int
+    quotes: List[str]
+
+@app.post("/api/editorial/apply_cuts_custom")
+def api_apply_cuts_custom(req: ApplyCutsCustomRequest):
+    """Surgically remove specific quotes from a chapter."""
+    ch_path = BASE_DIR / "chapters" / f"ch_{req.chapter:02d}.md"
+    if not ch_path.exists():
+        raise HTTPException(status_code=404, detail=f"Chapter {req.chapter} not found")
+
+    text = ch_path.read_text(encoding="utf-8")
+    orig_words = len(text.split())
+    applied = 0
+    failed = 0
+
+    for q in req.quotes:
+        q_clean = q.strip()
+        if not q_clean:
+            continue
+        if q_clean in text:
+            text = text.replace(q_clean, "")
+            applied += 1
+        else:
+            norm_q = re.sub(r"\s+", " ", q_clean)
+            tokens = [re.escape(t) for t in norm_q.split(" ") if t]
+            pattern = r"\s+".join(tokens)
+            m = re.search(pattern, text)
+            if m:
+                text = text[:m.start()] + text[m.end():]
+                applied += 1
+            else:
+                failed += 1
+
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    ch_path.write_text(text, encoding="utf-8")
+    new_words = len(text.split())
+
+    return {
+        "status": "success",
+        "chapter": req.chapter,
+        "applied_cuts": applied,
+        "failed_cuts": failed,
+        "words_removed": max(0, orig_words - new_words),
+        "remaining_words": new_words,
+    }
+
+
+@app.get("/api/editorial/briefs")
+def api_get_briefs():
+    """List all available revision briefs."""
+    briefs_dir = BASE_DIR / "briefs"
+    briefs_dir.mkdir(exist_ok=True, parents=True)
+    briefs_list = []
+
+    for b_file in sorted(briefs_dir.glob("ch*_brief.md")):
+        try:
+            m = re.search(r"ch_?(\d+)_brief\.md", b_file.name)
+            ch_num = int(m.group(1)) if m else 0
+            content = b_file.read_text(encoding="utf-8")
+            briefs_list.append({
+                "chapter": ch_num,
+                "filename": b_file.name,
+                "content": content,
+                "modified": b_file.stat().st_mtime,
+            })
+        except Exception:
+            pass
+
+    return {"briefs": briefs_list, "total": len(briefs_list)}
+
+
+@app.get("/api/editorial/briefs/{ch_num}")
+def api_get_brief_single(ch_num: int):
+    """Get single revision brief."""
+    briefs_dir = BASE_DIR / "briefs"
+    for pattern in (f"ch_{ch_num:02d}_brief.md", f"ch{ch_num:02d}_brief.md", f"ch_{ch_num}_brief.md"):
+        p = briefs_dir / pattern
+        if p.exists():
+            return {
+                "chapter": ch_num,
+                "filename": p.name,
+                "content": p.read_text(encoding="utf-8"),
+            }
+    raise HTTPException(status_code=404, detail=f"No brief found for Chapter {ch_num}")
+
+
+class SaveBriefRequest(BaseModel):
+    content: str
+
+@app.post("/api/editorial/briefs/{ch_num}")
+def api_save_brief_single(ch_num: int, req: SaveBriefRequest):
+    """Save/update a revision brief."""
+    briefs_dir = BASE_DIR / "briefs"
+    briefs_dir.mkdir(exist_ok=True, parents=True)
+    target = briefs_dir / f"ch_{ch_num:02d}_brief.md"
+    target.write_text(req.content, encoding="utf-8")
+    return {"status": "saved", "chapter": ch_num, "filename": target.name}
+
+
+# ============================================================================
+# Foundation Voice Fingerprint Endpoints
+# ============================================================================
+
+@app.get("/api/foundation/voice_metrics")
+def api_get_voice_metrics():
+    """Get calculated voice metrics."""
+    vf_path = BASE_DIR / "edit_logs" / "voice_fingerprint.json"
+    if not vf_path.exists():
+        try:
+            import subprocess
+            subprocess.run([sys.executable, str(BASE_DIR / "voice_fingerprint.py")], check=False)
+        except Exception:
+            pass
+
+    if vf_path.exists():
+        try:
+            return json.loads(vf_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"chapters": {}, "novel_average": {}, "outliers": {}}
+
+
+class VoiceFingerprintCustomRequest(BaseModel):
+    sample_text: str
+
+@app.post("/api/foundation/voice_fingerprint_custom")
+def api_post_voice_fingerprint_custom(req: VoiceFingerprintCustomRequest):
+    """Analyze custom input sample prose and return quantitative metrics."""
+    from voice_fingerprint import analyze_prose
+    metrics = analyze_prose(req.sample_text, "custom_sample")
+    return {"metrics": metrics}
+
+
+# ============================================================================
+# Analytics & Convergence Endpoints
+# ============================================================================
+
+@app.get("/api/analytics")
+def api_get_analytics():
+    """Compute and aggregate novel convergence, ELO, chapter scores, and word count trajectory."""
+    # 1. Parse results.tsv
+    tsv_path = BASE_DIR / "results.tsv"
+    history = []
+    if tsv_path.exists():
+        lines = tsv_path.read_text(encoding="utf-8").strip().split("\n")
+        if len(lines) > 1:
+            header = [h.strip() for h in lines[0].split("\t")]
+            for l in lines[1:]:
+                parts = [p.strip() for p in l.split("\t")]
+                if len(parts) == len(header):
+                    row = dict(zip(header, parts))
+                    try:
+                        row["score"] = float(row["score"]) if row["score"] != "-" else None
+                    except Exception:
+                        row["score"] = None
+                    try:
+                        row["word_count"] = int(row["word_count"]) if row["word_count"] != "-" else 0
+                    except Exception:
+                        row["word_count"] = 0
+                    history.append(row)
+
+    # 2. Per-chapter matrix
+    chapters_dir = BASE_DIR / "chapters"
+    edit_logs_dir = BASE_DIR / "edit_logs"
+    eval_logs_dir = BASE_DIR / "eval_logs"
+    ch_matrix = []
+
+    # Get tournament ELO lookup
+    elo_lookup = {}
+    tourn_path = edit_logs_dir / "compare_chapters.json"
+    if tourn_path.exists():
+        try:
+            t_data = json.loads(tourn_path.read_text(encoding="utf-8"))
+            for lb in t_data.get("leaderboard", []):
+                elo_lookup[lb.get("chapter")] = lb.get("elo")
+        except Exception:
+            pass
+
+    total_words = 0
+    total_fat_words = 0
+    scores_list = []
+
+    for ch_num in range(1, 25):
+        ch_file = chapters_dir / f"ch_{ch_num:02d}.md"
+        if not ch_file.exists():
+            continue
+
+        text = ch_file.read_text(encoding="utf-8")
+        words = len(text.split())
+        total_words += words
+        first_line = text.split("\n")[0].strip()
+        clean_title = re.sub(r'^[#\s\*]+|[#\s\*]+$', '', first_line).strip() or f"Chapter {ch_num}"
+
+        # Cuts
+        cuts_file = edit_logs_dir / f"ch{ch_num:02d}_cuts.json"
+        fat_pct = 0
+        cut_words = 0
+        if cuts_file.exists():
+            try:
+                c_data = json.loads(cuts_file.read_text(encoding="utf-8"))
+                fat_pct = c_data.get("overall_fat_percentage", 0)
+                cut_words = c_data.get("total_cuttable_words", 0)
+                total_fat_words += cut_words
+            except Exception:
+                pass
+
+        # Eval Score
+        score = None
+        eval_file = eval_logs_dir / f"eval_ch{ch_num:02d}.json"
+        if not eval_file.exists():
+            eval_file = eval_logs_dir / f"eval_ch{ch_num}.json"
+        if eval_file.exists():
+            try:
+                e_data = json.loads(eval_file.read_text(encoding="utf-8"))
+                score = e_data.get("score")
+                if score is not None:
+                    scores_list.append(score)
+            except Exception:
+                pass
+
+        ch_matrix.append({
+            "chapter": ch_num,
+            "title": clean_title,
+            "word_count": words,
+            "reading_time_min": max(1, round(words / 225)),
+            "score": score,
+            "fat_percentage": fat_pct,
+            "cuttable_words": cut_words,
+            "elo": round(elo_lookup.get(ch_num, 1500)),
+        })
+
+    # Summary
+    avg_score = round(statistics.mean(scores_list), 2) if scores_list else 0.0
+    overall_fat_pct = round((total_fat_words / total_words) * 100, 1) if total_words > 0 else 0.0
+
+    return {
+        "history": history,
+        "chapters": ch_matrix,
+        "total_words": total_words,
+        "total_chapters": len(ch_matrix),
+        "average_chapter_score": avg_score,
+        "overall_fat_percentage": overall_fat_pct,
+    }
+
+
+# ============================================================================
+# Engine Settings Endpoints
+# ============================================================================
+
+@app.get("/api/settings")
+def api_get_settings():
+    """Get active engine model and temperature configuration."""
+    from language_utils import detect_project_language
+    settings_file = BASE_DIR / "settings.json"
+    if settings_file.exists():
+        try:
+            stored = json.loads(settings_file.read_text(encoding="utf-8"))
+            for k, v in stored.items():
+                if k not in os.environ:
+                    os.environ[k] = str(v)
+        except Exception:
+            pass
+
+    return {
+        "writer_model": os.environ.get("AUTONOVEL_WRITER_MODEL", "gemini-3.7-flash"),
+        "judge_model": os.environ.get("AUTONOVEL_JUDGE_MODEL", "gemini-3.7-flash"),
+        "review_model": os.environ.get("AUTONOVEL_REVIEW_MODEL", "gemini-3.7-flash"),
+        "temperature": float(os.environ.get("AUTONOVEL_TEMPERATURE", "0.75")),
+        "target_words": int(os.environ.get("AUTONOVEL_TARGET_WORDS", "3500")),
+        "language": os.environ.get("AUTONOVEL_LANGUAGE", detect_project_language()),
+        "has_gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
+        "has_anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+    }
+
+
+
+
+class SettingsUpdateRequest(BaseModel):
+    writer_model: Optional[str] = None
+    judge_model: Optional[str] = None
+    temperature: Optional[float] = None
+    target_words: Optional[int] = None
+    language: Optional[str] = None
+
+@app.post("/api/settings")
+def api_update_settings(req: SettingsUpdateRequest):
+    """Update settings in .env and runtime environment."""
+    env_file = BASE_DIR / ".env"
+    env_content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+    lines = env_content.splitlines()
+    env_map = {}
+
+    for l in lines:
+        if "=" in l and not l.strip().startswith("#"):
+            k, v = l.split("=", 1)
+            env_map[k.strip()] = v.strip()
+
+    if req.writer_model is not None:
+        env_map["AUTONOVEL_WRITER_MODEL"] = req.writer_model
+        os.environ["AUTONOVEL_WRITER_MODEL"] = req.writer_model
+    if req.judge_model is not None:
+        env_map["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
+        os.environ["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
+    if req.temperature is not None:
+        env_map["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
+        os.environ["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
+    if req.target_words is not None:
+        env_map["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
+        os.environ["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
+    if req.language is not None:
+        env_map["AUTONOVEL_LANGUAGE"] = req.language
+        os.environ["AUTONOVEL_LANGUAGE"] = req.language
+
+    new_lines = []
+    for k, v in env_map.items():
+        new_lines.append(f"{k}={v}")
+
+    try:
+        env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        print(f"Note: .env update skipped ({e}), updating settings.json and os.environ")
+        # Save to settings.json
+        settings_file = BASE_DIR / "settings.json"
+        settings_file.write_text(json.dumps(env_map, indent=2), encoding="utf-8")
+
+    return {"status": "updated", "settings": api_get_settings()}
+
+
+
+
+# ============================================================================
+# Export & Production Endpoints
+# ============================================================================
+
+@app.get("/api/export/manuscript")
+def api_export_manuscript():
+    """Concatenate all drafted chapters into a complete manuscript."""
+    chapters_dir = BASE_DIR / "chapters"
+    files = sorted(chapters_dir.glob("ch_*.md"))
+    
+    # Title
+    title = "Manuscript"
+    outline_path = BASE_DIR / "outline.md"
+    if outline_path.exists():
+        first_line = outline_path.read_text(encoding="utf-8").split("\n")[0]
+        title = first_line.lstrip("# ").strip() or title
+    
+    parts = []
+    total_words = 0
+    chapters_list = []
+    
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        wc = len(text.split())
+        total_words += wc
+        parts.append(text)
+        first_line = text.split("\n")[0].lstrip("# ").strip() if text else f.name
+        chapters_list.append({
+            "filename": f.name,
+            "title": first_line,
+            "word_count": wc,
+        })
+    
+    full_content = "\n\n---\n\n".join(parts)
+    
+    # Check if LaTeX typeset output exists
+    tex_path = BASE_DIR / "typeset" / "chapters_content.tex"
+    has_typeset = tex_path.exists() and tex_path.stat().st_size > 50
+
+    return {
+        "title": title,
+        "total_words": total_words,
+        "chapters_count": len(files),
+        "chapters": chapters_list,
+        "full_text": full_content,
+        "has_typeset": has_typeset,
+    }
+
+
+@app.get("/api/export/art")
+def api_export_art():
+    """Get visual style and generated art direction concepts."""
+    art_dir = BASE_DIR / "art"
+    style = {}
+    directions = {}
+    picks = {}
+
+    style_file = art_dir / "visual_style.json"
+    if style_file.exists():
+        try: style = json.loads(style_file.read_text(encoding="utf-8"))
+        except Exception: pass
+
+    picks_file = art_dir / "picks.json"
+    if picks_file.exists():
+        try: picks = json.loads(picks_file.read_text(encoding="utf-8"))
+        except Exception: pass
+
+    for d_file in art_dir.glob("directions_*.json"):
+        art_type = d_file.stem.replace("directions_", "")
+        try:
+            directions[art_type] = json.loads(d_file.read_text(encoding="utf-8"))
+        except Exception: pass
+
+    return {
+        "visual_style": style,
+        "picks": picks,
+        "directions": directions,
+    }
+
+
+@app.get("/api/export/audiobook")
+def api_export_audiobook():
+    """Get parsed audiobook scripts."""
+    scripts_dir = BASE_DIR / "audiobook" / "scripts"
+    scripts = []
+
+    if scripts_dir.exists():
+        for s_file in sorted(scripts_dir.glob("ch*_script.json")):
+            try:
+                scripts.append({
+                    "filename": s_file.name,
+                    "data": json.loads(s_file.read_text(encoding="utf-8"))
+                })
+            except Exception: pass
+
+    return {
+        "scripts": scripts,
+        "total_chapters": len(scripts),
+    }
+
+
+@app.get("/api/export/manual_pdf")
+def api_download_manual_pdf():
+    """Download compiled Autonovel Studio User Manual PDF."""
+    pdf_path = BASE_DIR / "Autonovel_Studio_User_Manual.pdf"
+    if not pdf_path.exists():
+        try:
+            import subprocess
+            subprocess.run([sys.executable, str(BASE_DIR / "generate_manual_pdf.py")], check=False)
+        except Exception:
+            pass
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="Manual PDF not found")
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename="Autonovel_Studio_User_Manual.pdf"
+    )
+
+
 
 
 # ============================================================================
@@ -452,8 +912,45 @@ async def api_run_action(req: RunActionRequest, background_tasks: BackgroundTask
         if max_cycles:
             args.append(f"--max-cycles {max_cycles}")
         cmd = f"run_pipeline.py {' '.join(args)}"
+    elif action == "reset":
+        keep_seed = params.get("keep_seed", False)
+        args = []
+        if keep_seed:
+            args.append("--keep-seed")
+        cmd = f"reset_project.py {' '.join(args)}".strip()
+    elif action == "build_tex":
+        cmd = "typeset/build_tex.py"
+    elif action == "gen_art_style":
+        cmd = "gen_art.py style"
+    elif action == "gen_art_directions":
+        art_type = params.get("type", "cover")
+        cmd = f"gen_art_directions.py {art_type}"
+    elif action == "gen_art":
+        subcmd = params.get("subcommand", "all")
+        cmd = f"gen_art.py {subcmd}"
+    elif action == "apply_cuts":
+        ch = params.get("chapter", "all")
+        cmd = f"apply_cuts.py {ch}"
+    elif action == "gen_brief":
+        ch = params.get("chapter")
+        if ch:
+            cmd = f"gen_brief.py --panel {ch}"
+        else:
+            cmd = "gen_brief.py --auto"
+    elif action == "gen_revision":
+        ch = params.get("chapter", 1)
+        cmd = f"gen_revision.py {ch}"
+    elif action == "gen_audiobook_script":
+        ch = params.get("chapter")
+        if ch:
+            cmd = f"gen_audiobook_script.py {ch}"
+        else:
+            cmd = "gen_audiobook_script.py"
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+
 
     background_tasks.add_task(run_command_stream, cmd)
     return {"status": "started", "cmd": cmd}

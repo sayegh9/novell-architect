@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Save, Wand2, Check, RefreshCw, BookOpen, Lightbulb } from 'lucide-react';
 import { fetchFileContent, saveFileContent, runAction } from '../services/api';
+import { useI18n } from '../i18n';
+import { useTheme } from '../theme';
+import { useToast } from './ToastContainer';
 
 export const SeedStudio: React.FC = () => {
+  const { t, lang } = useI18n();
+  const { isDark } = useTheme();
+  const { success, error } = useToast();
+
   const [seedContent, setSeedContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -31,9 +38,10 @@ export const SeedStudio: React.FC = () => {
       setLoading(true);
       await saveFileContent('seed.txt', seedContent);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      success(t('seed.saved'));
+      setTimeout(() => setSaved(false), 2000);
     } catch (e: any) {
-      alert(`Save failed: ${e.message}`);
+      error(`Save failed: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -46,9 +54,9 @@ export const SeedStudio: React.FC = () => {
         count: conceptCount,
         riff: riffInput.trim() || undefined,
       });
-      alert('Generating seed concepts in background! Check the Live Terminal tab to see results.');
+      success(lang === 'ar' ? 'جارٍ توليد الأفكار الروائية! تابع شاشة البث المباشر.' : 'Generating seed concepts! Check Live Terminal.');
     } catch (e: any) {
-      alert(`Generation failed: ${e.message}`);
+      error(`Generation failed: ${e.message}`);
     } finally {
       setGenerating(false);
     }
@@ -57,15 +65,17 @@ export const SeedStudio: React.FC = () => {
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-mono text-amber-400 font-semibold tracking-wider uppercase mb-1">Phase 0 • Origin</div>
-          <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2.5">
-            <Sparkles className="w-6 h-6 text-amber-400" />
-            Seed Concept Studio
+          <div className="text-xs font-mono text-amber-500 font-semibold tracking-wider uppercase mb-1">
+            {lang === 'ar' ? 'المرحلة ٠ • النشأة والتكوين' : 'Phase 0 • Origin & Premise'}
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+            <Sparkles className="w-6 h-6 text-amber-500" />
+            {t('seed.title')}
           </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Define or generate the core speculative premise, central tension, magic costs, and sensory hook for your novel.
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            {t('seed.subtitle')}
           </p>
         </div>
 
@@ -73,22 +83,22 @@ export const SeedStudio: React.FC = () => {
           <button
             onClick={loadSeed}
             disabled={loading}
-            className="px-3.5 py-2 rounded-lg bg-[#141824] hover:bg-[#1a2030] text-slate-300 text-xs border border-[#23293d] transition-all flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#141824] hover:bg-slate-100 dark:hover:bg-[#1a2030] text-slate-700 dark:text-slate-300 text-xs border border-slate-200 dark:border-[#23293d] transition-all flex items-center gap-1.5 shadow-sm"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reload</span>
+            <span>{t('btn.refresh')}</span>
           </button>
           <button
             onClick={handleSave}
             disabled={loading}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all shadow-md ${
+            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all shadow-md ${
               saved 
                 ? 'bg-emerald-600 text-white' 
                 : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
             }`}
           >
             {saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            <span>{saved ? 'Saved to seed.txt' : 'Save seed.txt'}</span>
+            <span>{saved ? t('seed.saved') : t('seed.save')}</span>
           </button>
         </div>
       </div>
@@ -96,14 +106,14 @@ export const SeedStudio: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Main seed.txt Editor */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-[#12151f] border border-[#23293d] rounded-xl p-5 shadow-lg space-y-4">
-            <div className="flex items-center justify-between border-b border-[#20273a] pb-3">
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                <BookOpen className="w-4 h-4 text-amber-400" />
-                <span>Active Premise (seed.txt)</span>
+          <div className="bg-white dark:bg-[#12151f] border border-slate-200 dark:border-[#23293d] rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#20273a] pb-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <BookOpen className="w-4 h-4 text-amber-500" />
+                <span>{t('seed.editor')}</span>
               </div>
               <span className="text-[11px] text-slate-400 font-mono">
-                {seedContent.split(/\s+/).filter(Boolean).length} words
+                {seedContent.split(/\s+/).filter(Boolean).length} {t('stats.words')}
               </span>
             </div>
 
@@ -111,76 +121,81 @@ export const SeedStudio: React.FC = () => {
               value={seedContent}
               onChange={(e) => setSeedContent(e.target.value)}
               rows={14}
-              placeholder="Paste or write your seed premise here..."
-              className="w-full bg-[#0a0d14] border border-[#1e2436] rounded-lg p-4 font-mono text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-amber-500/60 transition-all resize-y"
+              placeholder={lang === 'ar' ? 'اكتب أو الصق فكرة روايتك هنا...' : 'Paste or write your seed premise here...'}
+              className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#1e2436] rounded-xl p-5 font-mono text-xs text-slate-800 dark:text-slate-200 leading-relaxed focus:outline-none focus:border-amber-500 transition-all resize-y"
             />
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 text-[11px] text-slate-400">
-              <div className="p-2.5 rounded-lg bg-[#0d1017] border border-[#1b2131]">
-                <div className="font-semibold text-amber-400">1. World Hook</div>
-                <div>Concrete, sensory differentiator</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 text-[11px] text-slate-600 dark:text-slate-400">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0d1017] border border-slate-200 dark:border-[#1b2131]">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">{lang === 'ar' ? '١. خطاف العالم' : '1. World Hook'}</div>
+                <div>{lang === 'ar' ? 'عنصر تميز حسي وملموس' : 'Sensory differentiator'}</div>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#0d1017] border border-[#1b2131]">
-                <div className="font-semibold text-amber-400">2. Magic / Cost</div>
-                <div>Strict rules, tangible costs</div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0d1017] border border-slate-200 dark:border-[#1b2131]">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">{lang === 'ar' ? '٢. السحر والتكلفة' : '2. Magic / Cost'}</div>
+                <div>{lang === 'ar' ? 'قواعد وتكلفة جسدية' : 'Strict rules, real costs'}</div>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#0d1017] border border-[#1b2131]">
-                <div className="font-semibold text-amber-400">3. Central Lie</div>
-                <div>Protagonist's false coping belief</div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0d1017] border border-slate-200 dark:border-[#1b2131]">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">{lang === 'ar' ? '٣. القناعة الزائفة' : '3. Central Lie'}</div>
+                <div>{lang === 'ar' ? 'وهم البطل الداخلي' : 'Protagonist\'s false belief'}</div>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#0d1017] border border-[#1b2131]">
-                <div className="font-semibold text-amber-400">4. Core Tension</div>
-                <div>Irreconcilable opposing stakes</div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0d1017] border border-slate-200 dark:border-[#1b2131]">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">{lang === 'ar' ? '٤. الصراع الجوهري' : '4. Core Tension'}</div>
+                <div>{lang === 'ar' ? 'مأزق غير قابل للحل الوسط' : 'Irreconcilable stakes'}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Col: AI Concept Generator & Riffer */}
-        <div className="space-y-6">
-          <div className="bg-[#12151f] border border-[#23293d] rounded-xl p-5 shadow-lg space-y-4">
-            <div className="flex items-center gap-2 border-b border-[#20273a] pb-3 text-xs font-semibold text-slate-200">
-              <Wand2 className="w-4 h-4 text-amber-400" />
-              <span>AI Idea Riffing & Discovery</span>
+        {/* Right Col: AI Idea Riffing Studio */}
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-[#12151f] border border-slate-200 dark:border-[#23293d] rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 dark:border-[#20273a] pb-3">
+              <Lightbulb className="w-4 h-4 text-amber-500" />
+              <h3 className="font-semibold text-xs text-slate-800 dark:text-slate-200">{t('seed.riffing')}</h3>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              {t('seed.riff_desc')}
+            </p>
+
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Riff / Remix Angle</label>
-                <input
-                  type="text"
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  {t('seed.custom_riff')}
+                </label>
+                <textarea
                   value={riffInput}
                   onChange={(e) => setRiffInput(e.target.value)}
-                  placeholder="e.g. Magic costs memories, inverted gothic towers..."
-                  className="w-full bg-[#0a0d14] border border-[#23293d] rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500"
+                  rows={3}
+                  placeholder={t('seed.riff_placeholder')}
+                  className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#1e2436] rounded-xl p-3 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Concepts Count</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  {lang === 'ar' ? 'عدد الأفكار المطلوبة' : 'Premise Count'}
+                </label>
+                <select
                   value={conceptCount}
-                  onChange={(e) => setConceptCount(parseInt(e.target.value) || 5)}
-                  className="w-full bg-[#0a0d14] border border-[#23293d] rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500"
-                />
+                  onChange={(e) => setConceptCount(parseInt(e.target.value))}
+                  className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#1e2436] rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                >
+                  <option value={3}>3 {lang === 'ar' ? 'أفكار' : 'Variations'}</option>
+                  <option value={5}>5 {lang === 'ar' ? 'أفكار' : 'Variations'}</option>
+                  <option value={10}>10 {lang === 'ar' ? 'أفكار' : 'Variations'}</option>
+                </select>
               </div>
 
               <button
                 onClick={handleGenerateConcepts}
                 disabled={generating}
-                className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2"
               >
-                <Lightbulb className="w-4 h-4 fill-current" />
-                <span>{generating ? 'Spawning Agent...' : 'Generate Seed Concepts'}</span>
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>{generating ? t('seed.btn_riffing') : t('seed.btn_riff')}</span>
               </button>
             </div>
-
-            <p className="text-[11px] text-slate-400 leading-relaxed pt-2">
-              Gemini will generate distinct, sensory fantasy premises with hard speculative costs. Outputs stream live into the Live Terminal stream.
-            </p>
           </div>
         </div>
       </div>

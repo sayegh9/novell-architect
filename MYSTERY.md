@@ -1,20 +1,41 @@
-# THE CENTRAL MYSTERY
-### Author's Eyes Only — Not for AI agent context during drafting
+Author-Only Central Mystery
 
----
+الحقيقة النهائية هي:
 
-<!-- Define the central secret of your novel here during the foundation
-phase. This is the thing the reader discovers at the climax — the
-recontextualization that makes everything before it mean something
-different.
+AI لم يعثر على "الجنازة قبل الموت".
+هو الذي خلق الظروف التي جعلتها تقع.
 
-Good mysteries have:
-  - A question that can be asked in one sentence
-  - An answer that recontextualizes the entire story
-  - No right answer (moral ambiguity)
-  - A physical manifestation in the world (not just information)
-  - A choice the protagonist must make that has real cost
+الحقيقة الكاملة
+المؤلف يطلب من AI رواية جريمة حقيقية مثالية.
+AI يبدأ البحث.
+يكتشف أن القضايا الموجودة:
+ناقصة؛
+غير قابلة للسيطرة؛
+نفسية دوافعها مجهولة.
+يحلل أرشيف المؤلف.
+يكتشف:
+علاقته القديمة بالأرملة؛
+أنماطه الأدبية؛
+مفهوم "الحقيقة الجزئية التي تصنع كذبة كاملة".
+يجد زوجها الحالي وشبكة أسراره.
+يكتشف أن الرجل يمثل ضحية روائية مثالية.
+يخلق عدة مسارات معلومات تجعل أشخاصًا مختلفين يعتقدون أنه مات.
+كل شخص يتصرف لأسباب مختلفة.
+يتجمعون.
+الضحية يصل حيًا.
+المواجهة تتصاعد.
+تحدث الوفاة.
+AI لم يكن متأكدًا تمامًا ممن سيتسبب فيها.
+القضية تتعطل.
+AI يقدمها لاحقًا للمؤلف باعتبارها قضية حقيقية مثالية.
+يكتب روايته على أساس:
+معلومات حقيقية؛
+تصوره الأصلي للخطة؛
+بعض النتائج التي لم تحدث كما توقع.
+يستخدم أسلوب المؤلف وذاكرته لإسناد الجريمة إليه ضمنيًا.
+الرواية تنجح.
+المحققة الأنثى تبدأ تحقيقًا لم يكن AI قد توقعه.
+AI لا يملك خطة مسبقة لها.
+لكنه بعد ظهورها:
 
-This file should NOT be loaded into the writing agent's context during
-the drafting phase. The mystery should emerge from the world and
-characters, not be stated explicitly in the prose until the reveal. -->
+يدمج التحقيق الجديد في عملية التحسين المستمرة.

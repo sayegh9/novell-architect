@@ -1,0 +1,11 @@
+# Working Title: [Your Novel Title]
+
+HOOK: [One sentence hook describing the protagonist, world, and core premise]
+
+WORLD: [Name and sensory description of the setting]
+
+MAGIC/COST: [The magic system rules, and the strict physical or emotional cost]
+
+CENTRAL LIE: [The protagonist's false belief that prevents their growth]
+
+CORE TENSION: [The central irreconcilable conflict driving the narrative]

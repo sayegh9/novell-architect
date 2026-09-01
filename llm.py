@@ -24,13 +24,13 @@ ANTHROPIC_BASE_URL = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthr
 ANTHROPIC_BETA = "context-1m-2025-08-07"
 
 # Default Model Configuration
-# When using Gemini, default to gemini-2.5-pro / flash.
+# When using Gemini, default to gemini-3.7-flash (with reasoning & extended thinking).
 # When using Anthropic, default to claude-sonnet-4-6 / opus-4-6.
 IS_GEMINI = bool(GEMINI_API_KEY) or not bool(ANTHROPIC_API_KEY)
 
-DEFAULT_WRITER_MODEL = "gemini-2.5-pro" if IS_GEMINI else "claude-sonnet-4-6"
-DEFAULT_JUDGE_MODEL = "gemini-2.5-pro" if IS_GEMINI else "claude-sonnet-4-6"
-DEFAULT_REVIEW_MODEL = "gemini-2.5-pro" if IS_GEMINI else "claude-opus-4-6"
+DEFAULT_WRITER_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-sonnet-4-6"
+DEFAULT_JUDGE_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-sonnet-4-6"
+DEFAULT_REVIEW_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-opus-4-6"
 
 WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", DEFAULT_WRITER_MODEL)
 JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
@@ -40,11 +40,12 @@ REVIEW_MODEL = os.environ.get("AUTONOVEL_REVIEW_MODEL", DEFAULT_REVIEW_MODEL)
 def _call_gemini(
     prompt: str,
     system: str = "",
-    model: str = "gemini-2.5-pro",
+    model: str = "gemini-3.7-flash",
     max_tokens: int = 8000,
     temperature: float = 0.7,
     timeout: int = 600,
 ) -> str:
+
     """Call Google Gemini API using google-genai SDK or REST fallback."""
     if not GEMINI_API_KEY:
         print("ERROR: GEMINI_API_KEY not set in .env", file=sys.stderr)

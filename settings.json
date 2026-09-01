@@ -1,0 +1,8 @@
+{
+  "GEMINI_API_KEY": "AIzaSyBKoYn7HC4HZGGj8niJfGFuk_oyFHp9luw",
+  "AUTONOVEL_WRITER_MODEL": "gemini-3.7-flash",
+  "AUTONOVEL_JUDGE_MODEL": "gemini-3.7-flash",
+  "AUTONOVEL_REVIEW_MODEL": "gemini-3.7-flash",
+  "AUTONOVEL_TEMPERATURE": "0.8",
+  "AUTONOVEL_LANGUAGE": "ar"
+}

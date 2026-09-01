@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 One-shot characters.md generator for foundation phase.
-Reads seed.txt + voice.md + world.md + CRAFT.md, calls writer model.
+Reads seed.txt + voice.md + world.md, calls writer model.
+Supports Arabic and English dynamically.
 """
 import os
 import sys
@@ -12,18 +13,10 @@ BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_writer as _call_writer
+from language_utils import detect_project_language
 
-SYSTEM_PROMPT = (
-    "You are a character designer for literary fiction with deep knowledge of "
-    "wound/want/need/lie frameworks, Sanderson's three sliders, and dialogue "
-    "distinctiveness. You create characters who feel like real people with "
-    "contradictions, secrets, and speech patterns you can hear. "
-    "You never use AI slop words. You write in clean, direct prose."
-)
-
-def call_writer(prompt, max_tokens=16000):
-    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.7, timeout=300)
-
+def call_writer(prompt, system_prompt, max_tokens=16000):
+    return _call_writer(prompt, system=system_prompt, max_tokens=max_tokens, temperature=0.7, timeout=300)
 
 def main():
     seed_file = BASE_DIR / "seed.txt"
@@ -31,114 +24,75 @@ def main():
         print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
         sys.exit(1)
 
-    seed = seed_file.read_text()
-    world = (BASE_DIR / "world.md").read_text() if (BASE_DIR / "world.md").exists() else ""
+    seed = seed_file.read_text(encoding="utf-8")
+    world = (BASE_DIR / "world.md").read_text(encoding="utf-8") if (BASE_DIR / "world.md").exists() else ""
+    voice = (BASE_DIR / "voice.md").read_text(encoding="utf-8") if (BASE_DIR / "voice.md").exists() else ""
 
-    # Voice Part 2 only
-    voice = (BASE_DIR / "voice.md").read_text() if (BASE_DIR / "voice.md").exists() else ""
-    voice_lines = voice.split('\n')
-    part2_start = next((i for i, l in enumerate(voice_lines) if 'Part 2' in l), 0)
-    voice_part2 = '\n'.join(voice_lines[part2_start:])
+    lang = detect_project_language()
+    is_arabic = (lang == "ar")
 
-    prompt = f"""Build a complete character registry for this fantasy novel. This is CHARACTERS.MD --
+    if is_arabic:
+        system_prompt = (
+            "أنت مصمم ومحلل شخصيات روائية من الطراز الرفيع، تمتلك فهماً عميقاً لأبعاد الشخصيات النفسية "
+            "(الجرح الغائر، الرغبة الظاهرة، الحاجة الباطنة، والقناعة الزائفة)، وتمايز الأصوات الحوارية. "
+            "تبتكر شخصيات تنبض بالحياة، مليئة بالتناقضات البشرية والأسرار والدوافع الحقيقية. "
+            "تكتب بلغة عربية فصيحة، رصينة، بعيدة عن القوالب النمطية الجاهزة."
+        )
+        prompt = f"""ابنِ سجلاً شاملاً وعميقاً للشخصيات (CHARACTERS.MD) لهذه الرواية باللغة العربية الفصحى الرفيعة.
+هذا المستند هو المرجع الحاكم لمن هم أبطال الرواية، وما يحركهم، وكيف يتحدثون، وما هي أسرارهم.
+
+فكرة الرواية (البذرة):
+{seed}
+
+دليل العالم (WORLD BIBLE):
+{world}
+
+المطلوب لكل شخصية رئيسية وثانوية:
+1. بطاقة الهوية: الاسم، العمر، الدور السردي، والمظهر الجسدي الحسي (بصمة بصرية مميزة).
+2. المحرك النفسي: الجرح القديم (Wound)، الرغبة المعلنة (Want)، الحاجة الروحية (Need)، والقناعة الزائفة (Lie).
+3. البصمة الصوتية والحوارية (Dialogue Voice): نبرة الصوت، الكلمات المتكررة، سرعة الكلام، وما الذي تخفيه وراء الكلمات.
+4. العلاقات والتوترات: علاقة كل شخصية بالبطل وببقية الشخصيات، وما الذي يربطهم أو يفرقهم.
+
+اكتب سجل الشخصيات كاملاً الآن باللغة العربية الفصحى المتينة:
+"""
+    else:
+        system_prompt = (
+            "You are a character designer for literary fiction with deep knowledge of "
+            "wound/want/need/lie frameworks, Sanderson's three sliders, and dialogue "
+            "distinctiveness. You create characters who feel like real people with "
+            "contradictions, secrets, and speech patterns you can hear. "
+            "You never use AI slop words. You write in clean, direct prose."
+        )
+        prompt = f"""Build a complete character registry for this fantasy novel. This is CHARACTERS.MD --
 the definitive reference for WHO exists in this story, what drives them, how they speak,
 and what secrets they carry.
 
 SEED CONCEPT:
 {seed}
 
-WORLD BIBLE (the world these characters inhabit):
+WORLD BIBLE:
 {world}
 
-VOICE IDENTITY (the novel's tone):
-{voice_part2}
+VOICE:
+{voice}
 
-CHARACTER CRAFT REQUIREMENTS (from CRAFT.md):
-
-### The Three Sliders (Sanderson)
-Every character has three independent dials (0-10):
-  PROACTIVITY -- Do they drive the plot or react to it?
-  LIKABILITY  -- Does the reader empathize with them?
-  COMPETENCE  -- Are they good at what they do?
-Rule: compelling = HIGH on at least TWO, or HIGH on one with clear growth.
-
-### Wound / Want / Need / Lie Framework
-A causal chain:
-  GHOST (backstory event) -> WOUND (ongoing damage) -> LIE (false belief to cope)
-    -> WANT (external goal driven by Lie) -> NEED (internal truth, opposes Lie)
-Rules: Want and Need must be IN TENSION. Lie statable in one sentence.
-  Truth is its direct opposite.
-
-### Dialogue Distinctiveness (8 dimensions)
-1. Vocabulary level  2. Sentence length  3. Contractions/formality
-4. Verbal tics  5. Question vs statement ratio  6. Interruption patterns
-7. Metaphor domain  8. Directness vs indirectness
-Test: Remove dialogue tags. Can you tell who's speaking?
-
-BUILD THE REGISTRY WITH AT LEAST THESE CHARACTERS:
-
-1. **Cass Bellwright** (protagonist, POV character)
-   - Full wound/want/need/lie chain
-   - Three sliders with justification
-   - Arc type (positive/negative/flat)
-   - Detailed speech pattern (8 dimensions)
-   - Physical habits and tells
-   - At least 2 secrets
-   - Key relationships mapped
-
-2. **Eddan Bellwright** (father)
-   - Same depth as Cass
-   - His relationship to the sealed journals, the shaking hands
-   - What he knows and what he's hiding
-
-3. **Perin Bellwright** (brother) 
-   - Even though he's absent for much of the story, he needs full depth
-   - What actually happened with the Corda contract
-   - His presence through absence
-
-4. **Maret Corda** (antagonist)
-   - Not a villain -- someone whose interests conflicts with Cass's
-   - Her own wound/want/need/lie (she should be understandable)
-
-5. **Rector Suvaine** (Academy Chancellor)
-   - The institutional antagonist -- the system personified
-   - She believes she's protecting Cantamura
-
-6. **Torvald Hess** (Compact leader)
-   - The outsider perspective on the system
-   - What he represents thematically
-
-7. **At least 1-2 additional characters** that the story needs
-   - A peer/friend for Cass at the Academy?
-   - Someone at the House of Corda who knows Perin?
-   - A Court Singer with divided loyalties?
-
-FOR EACH CHARACTER INCLUDE:
-- Name, age, role
-- Ghost/Wound/Want/Need/Lie chain (for major characters)
-- Three sliders (proactivity/likability/competence) with numbers and justification
-- Arc type and arc trajectory
-- Speech pattern (all 8 dimensions, with example lines)
-- Physical appearance (specific, not generic)
-- Physical habits and unconscious tells
-- Secrets (what the reader doesn't learn immediately)
-- Key relationships (mapped to other characters)
-- Thematic role (what question does this character embody?)
-
-IMPORTANT:
-- Characters must INTERCONNECT. Their wants should conflict with each other.
-- Every secret should be something that would CHANGE the story if revealed.
-- Speech patterns must be distinct enough to pass the no-tags test.
-- Give Cass habits that come from his gift (the pain, the constant listening).
-- The father's shaking hands should connect to something specific.
-- Maret Corda should be as fully realized as Cass -- a worthy antagonist.
-- Target ~3000-4000 words. Dense character work, not padding.
+Build the complete character registry now with clear psychological depth and unique dialogue voices.
 """
 
-    print("Calling writer model...", file=sys.stderr)
-    result = call_writer(prompt)
-    print(result)
+    print(f"Generating characters.md (Language: {'Arabic' if is_arabic else 'English'})...", flush=True)
+    content = call_writer(prompt, system_prompt=system_prompt)
+    
+    content = content.strip()
+    if content.startswith("```markdown"):
+        content = content[11:]
+    if content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
 
+    (BASE_DIR / "characters.md").write_text(content, encoding="utf-8")
+    print(f"characters.md written successfully ({len(content.split())} words)")
 
 if __name__ == "__main__":
     main()

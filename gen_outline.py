@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate outline.md from seed + world + characters + mystery + craft."""
+"""
+Generate outline.md from seed + world + characters + mystery + craft.
+Supports Arabic and English dynamically.
+"""
 import os
 import sys
 from pathlib import Path
@@ -9,18 +12,10 @@ BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_writer as _call_writer
+from language_utils import detect_project_language
 
-SYSTEM_PROMPT = (
-    "You are a novel architect with deep knowledge of Save the Cat beats, "
-    "Sanderson's plotting principles, Dan Harmon's Story Circle, and MICE Quotient. "
-    "You build outlines that an author can draft from without inventing structure "
-    "on the fly. Every chapter has beats, emotional arc, and try-fail cycle type. "
-    "You never use AI slop words. You write in clean, direct prose."
-)
-
-def call_writer(prompt, max_tokens=16000):
-    return _call_writer(prompt, system=SYSTEM_PROMPT, max_tokens=max_tokens, temperature=0.5, timeout=600)
-
+def call_writer(prompt, system_prompt, max_tokens=16000):
+    return _call_writer(prompt, system=system_prompt, max_tokens=max_tokens, temperature=0.5, timeout=600)
 
 def main():
     seed_file = BASE_DIR / "seed.txt"
@@ -28,25 +23,73 @@ def main():
         print("ERROR: seed.txt not found. Create or generate seed.txt first.", file=sys.stderr)
         sys.exit(1)
 
-    seed = seed_file.read_text()
-    world = (BASE_DIR / "world.md").read_text() if (BASE_DIR / "world.md").exists() else ""
-    characters = (BASE_DIR / "characters.md").read_text() if (BASE_DIR / "characters.md").exists() else ""
-    mystery = (BASE_DIR / "MYSTERY.md").read_text() if (BASE_DIR / "MYSTERY.md").exists() else ""
-    craft = (BASE_DIR / "CRAFT.md").read_text() if (BASE_DIR / "CRAFT.md").exists() else ""
+    seed = seed_file.read_text(encoding="utf-8")
+    world = (BASE_DIR / "world.md").read_text(encoding="utf-8") if (BASE_DIR / "world.md").exists() else ""
+    characters = (BASE_DIR / "characters.md").read_text(encoding="utf-8") if (BASE_DIR / "characters.md").exists() else ""
+    mystery = (BASE_DIR / "MYSTERY.md").read_text(encoding="utf-8") if (BASE_DIR / "MYSTERY.md").exists() else ""
+    voice = (BASE_DIR / "voice.md").read_text(encoding="utf-8") if (BASE_DIR / "voice.md").exists() else ""
 
-    # Voice Part 2 only
-    voice = (BASE_DIR / "voice.md").read_text() if (BASE_DIR / "voice.md").exists() else ""
-    voice_lines = voice.split('\n')
-    part2_start = next((i for i, l in enumerate(voice_lines) if 'Part 2' in l), 0)
-    voice_part2 = '\n'.join(voice_lines[part2_start:])
+    lang = detect_project_language()
+    is_arabic = (lang == "ar")
 
-    prompt = f"""Build a complete chapter outline for this fantasy novel. Target: 22-26 chapters,
-~80,000 words total (~3,000-4,000 words per chapter).
+    if is_arabic:
+        system_prompt = (
+            "أنت مهندس حبكات روائية ومعماري سردي بارع، تمتلك معرفة عميقة بهندسة الفصول "
+            "وقوانين التصاعد الدرامي ونقاط التحول المحورية. تبني مخططات فصول محكمة، دقيقة، "
+            "بحيث يتمكن الكاتب من صياغة كل فصل فوراً دون تردد. "
+            "لكل فصل هدف سردي واضح، ونبضات محددة، وقوس عاطفي متصاعد، وخاتمة مشوقة. "
+            "تكتب بلغة عربية فصحى أدبية رفيعة."
+        )
+        prompt = f"""ابنِ مخططاً تفصيلياً كاملاً لفصول الرواية (OUTLINE.MD) باللغة العربية الفصحى.
+المستهدف: رواية من 20 إلى 24 فصلاً.
+
+فكرة الرواية (البذرة):
+{seed}
+
+دليل العالم (WORLD BIBLE):
+{world}
+
+سجل الشخصيات (CHARACTERS):
+{characters}
+
+اللغز والسر الجوهري:
+{mystery}
+
+متطلبات المخطط:
+قسّم الرواية إلى 4 فصول رئيسية (الأعمال الدرامية):
+- الفصل التمهيدي (الفصول 1-6): التعريف بالعالم، الصعود، وتوزيع الأدوار وبداية التوتر.
+- الفصل التصاعدي الأول (الفصول 7-12): أول بوادر الاستقلال والشرخ، نقطة اللاعودة في المنتصف.
+- الفصل التصاعدي الثاني (الفصول 13-18): تصاعد الصراع، خلع الأقنعة، والانهيار الممنهج.
+- الفصل الختامي (الفصول 19-24): الذروة الدرامية الكبرى، المواجهة الحاسمة، وحسم المصائر.
+
+لكل فصل من الفصول (من الفصل 1 إلى الفصل 24)، اكتب التالي بدقة متناهية:
+### الفصل X: [عنوان الفصل]
+- شخصية وجهة النظر (POV): [اسم الشخصية]
+- موقع المشهد: [المكان بالتحديد]
+- النبضات السردية (Numbered Beats):
+  1. [النبضة الأولى: كيف يبدأ المشهد]
+  2. [النبضة الثانية: تصاعد الحوار أو الحدث]
+  3. [النبضة الثالثة: المفاجأة أو التوتر]
+  4. [النبضة الرابعة: القرار أو النتيجة]
+- القوس العاطفي والهدف: [التحول الشعوري للشخصية]
+- الخاتمة والخطاف: [كيف ينتهي الفصل ويمهّد للتالي]
+
+اكتب المخطط كاملاً الآن باللغة العربية الفصحى لجميع الفصول الـ 24:
+"""
+    else:
+        system_prompt = (
+            "You are a novel architect with deep knowledge of Save the Cat beats, "
+            "Sanderson's plotting principles, Dan Harmon's Story Circle, and MICE Quotient. "
+            "You build outlines that an author can draft from without inventing structure "
+            "on the fly. Every chapter has beats, emotional arc, and try-fail cycle type. "
+            "You never use AI slop words. You write in clean, direct prose."
+        )
+        prompt = f"""Build a complete chapter outline for this fantasy novel. Target: 20-24 chapters.
 
 SEED CONCEPT:
 {seed}
 
-THE CENTRAL MYSTERY (author's eyes only -- reader discovers gradually):
+THE CENTRAL MYSTERY:
 {mystery}
 
 WORLD BIBLE:
@@ -55,75 +98,26 @@ WORLD BIBLE:
 CHARACTER REGISTRY:
 {characters}
 
-VOICE (tone and register):
-{voice_part2}
+VOICE:
+{voice}
 
-CRAFT REFERENCE (structures to follow):
-{craft}
-
-BUILD THE OUTLINE WITH:
-
-## Act Structure
-Map out Act I (0-23%), Act II Part 1 (23-50%), Act II Part 2 (50-77%), Act III (77-100%).
-State the percentage marks for the key novel.
-
-## Chapter-by-Chapter Outline
-
-For EACH chapter, provide:
-### Ch N: [Title]
-- **POV:** (always Cass, third-person limited)
-- **Location:** Which districts/locations
-- **Save the Cat beat:** Which beat this chapter serves (Opening Image, Setup, Catalyst, etc.)
-- **% mark:** Where this falls in the novel
-- **Emotional arc:** Starting emotion → ending emotion
-- **Try-fail cycle:** Yes-but / No-and / No-but / Yes-and
-- **Beats:** 3-5 specific scene beats that must happen
-- **Plants:** Foreshadowing elements planted in this chapter
-- **Payoffs:** Foreshadowing elements that pay off here
-- **Character movement:** What changes for Cass (or other characters) by chapter's end
-- **The lie:** How Cass's lie ("if I master the system, I can fix things from inside") is
-  reinforced or challenged in this chapter
-- **~Word count target:** for pacing
-
-## Foreshadowing Ledger
-
-A table tracking every planted thread:
-| Thread | Planted (Ch) | Reinforced (Ch) | Payoff (Ch) | Type |
-
-Include at LEAST 15 threads. Types: object, dialogue, action, symbolic, structural.
-
-KEY PLOT ARCHITECTURE:
-
-Act I (Ch 1-6ish): Establish Cass's world, his pain, his gift, the Academy, his family.
-Plant the mystery early (the locked room, the forbidden bells, father's tremor).
-Catalyst: something forces Cass to investigate Perin's contract.
-
-Act II Part 1 (Ch 7-12ish): Investigation. Cass digs into the Corda contract, encounters
-Maret, allies with Torvald and Lenne, begins hearing the harmonic more clearly.
-Midpoint: Cass learns a partial truth that changes his approach (false victory or defeat).
-
-Act II Part 2 (Ch 13-18ish): Pressure mounts. Maret moves against the Bellwrights.
-Father's secrets begin to surface. Cass's lie is increasingly unsustainable.
-All Is Lost: Cass confronts his father and learns the full truth.
-
-Act III (Ch 19-24ish): Cass understands the question. Must choose how to answer.
-The climax plays out using the established intervals of Tonal Law.
-The resolution shows the aftermath of his choice.
-
-CONSTRAINTS:
-- The climax must be mechanically resolvable using established Tonal Law intervals
-- Cass's investigation should feel like a mystery plot overlaid on a coming-of-age arc
-- The Stability Trap: bad things must stay bad. Not everything resolves cleanly.
-- Perin must appear in person at some point (not just in memory/letters)
-- At least 3 chapters should be "quiet" -- character-focused, low-action, emotionally rich
-- Vary the try-fail types: 60%+ should be "yes-but" or "no-and"
-- The foreshadowing ledger must have plant-to-payoff distances of at least 3 chapters
+Build the complete chapter outline now. Each chapter must have specific beats, POV, setting, and emotional shift.
 """
 
-    print("Calling writer model...", file=sys.stderr)
-    result = call_writer(prompt)
-    print(result)
+    print(f"Generating outline.md (Language: {'Arabic' if is_arabic else 'English'})...", flush=True)
+    content = call_writer(prompt, system_prompt=system_prompt)
+    
+    content = content.strip()
+    if content.startswith("```markdown"):
+        content = content[11:]
+    if content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
 
+    (BASE_DIR / "outline.md").write_text(content, encoding="utf-8")
+    print(f"outline.md written successfully ({len(content.split())} words)")
 
 if __name__ == "__main__":
     main()
