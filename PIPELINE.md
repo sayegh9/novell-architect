@@ -24,6 +24,7 @@ FRAMEWORK (reusable, never edited by the pipeline):
   CRAFT.md             -- craft education (plot, character, world, prose)
   ANTI-SLOP.md         -- word-level AI tell detection
   ANTI-PATTERNS.md     -- structural AI pattern detection
+  prompts/             -- externalized language-aware prompts (en/ar)
 
 TEMPLATES (empty shells, filled per-novel on branch):
   voice.md             -- Part 1 (guardrails) permanent; Part 2 blank
@@ -160,9 +161,9 @@ For each chapter in outline order:
      - This chapter's outline entry
      - Previous chapter's last ~1000 words
      - Next chapter's outline (for continuity)
-  2. draft_chapter.py → chapters/ch_NN.md
-  3. evaluate.py --chapter=NN
-  4. If score > 6.0 → keep, commit. If < 6.0 → discard, retry (max 5).
+  2. `draft_chapter.py` parses the outline into chunks and uses **Segmented Drafting** (iterative beat-by-beat generation) to avoid length collapse, outputting to `chapters/ch_NN.md`.
+  3. `evaluate.py --chapter=NN` scores the chapter and detects AI slop (mechanically via regex for English, semantically via LLM for Arabic).
+  4. If `score - slop_penalty > 6.0` → keep, commit. If `< 6.0` → discard, retry (max 5).
   5. Extract new canon entries from eval output → append to canon.md
   6. Log to results.tsv
 

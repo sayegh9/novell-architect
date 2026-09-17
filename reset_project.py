@@ -16,7 +16,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.resolve()
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 
 def reset_project(archive: bool = True, keep_seed: bool = False):
     print("=" * 60)

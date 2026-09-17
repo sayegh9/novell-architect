@@ -1,0 +1,21 @@
+Rewrite and revise Chapter {ch_num} based on this editorial revision brief.
+
+REVISION BRIEF (follow this exactly):
+{brief_content}
+
+CURRENT DRAFT (previous version):
+{old_text}
+
+VOICE DEFINITION:
+{voice}
+
+CHARACTER REGISTRY:
+{characters}
+
+WORLD BIBLE:
+{world}
+
+PREVIOUS CHAPTER ENDING (maintain continuity):
+{prev_tail}
+
+Write the full revised chapter now. Do not truncate. Target 3000 words.

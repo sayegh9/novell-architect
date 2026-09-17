@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_judge as _call_judge
@@ -37,41 +37,38 @@ def parse_json(text):
     if text.startswith("```"):
         text = re.sub(r'^```\w*\n?', '', text)
         text = re.sub(r'\n?```$', '', text)
-    start = text.find('{')
-    if start == -1:
-        start = text.find('[')
-    if start == -1:
-        raise ValueError("No JSON found")
-    # Try direct parse first
+    
+    # Extract outermost JSON block
+    m = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    candidate = m.group(0) if m else text
+
     try:
-        return json.loads(text[start:], strict=False)
-    except json.JSONDecodeError:
-        # Find matching brace
-        depth = 0
-        in_string = False
-        escape = False
-        open_char = text[start]
-        close_char = '}' if open_char == '{' else ']'
-        for i in range(start, len(text)):
-            c = text[i]
-            if escape:
-                escape = False
-                continue
-            if c == '\\' and in_string:
-                escape = True
-                continue
-            if c == '"' and not escape:
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if c == open_char:
-                depth += 1
-            elif c == close_char:
-                depth -= 1
-                if depth == 0:
-                    return json.loads(text[start:i+1], strict=False)
-        return json.loads(text[start:], strict=False)
+        return json.loads(candidate, strict=False)
+    except Exception:
+        pass
+
+    try:
+        # Remove trailing commas
+        cleaned = re.sub(r',\s*([\}\]])', r'\1', candidate)
+        return json.loads(cleaned, strict=False)
+    except Exception:
+        pass
+
+    start = text.find('{')
+    if start != -1:
+        end = text.rfind('}')
+        if end > start:
+            try:
+                return json.loads(text[start:end+1], strict=False)
+            except Exception:
+                pass
+
+    return {
+        "cuts": [],
+        "total_cuttable_words": 0,
+        "overall_fat_percentage": 0,
+        "one_sentence_verdict": text[:300].strip()
+    }
 
 EDIT_PROMPT = """You are editing a fantasy novel chapter. Your job: identify exactly
 what to cut or rewrite to make this chapter tighter, sharper, more alive.
@@ -118,19 +115,22 @@ Respond with JSON:
 
 def edit_chapter(ch_num):
     ch_path = CHAPTERS_DIR / f"ch_{ch_num:02d}.md"
-    text = ch_path.read_text()
+    text = ch_path.read_text(encoding="utf-8")
     word_count = len(text.split())
     
+    print(f"  [AI Editor] Reading Chapter {ch_num} ({word_count} words)...", flush=True)
     prompt = EDIT_PROMPT.format(chapter_text=text, word_count=word_count)
+    print(f"  [AI Editor] Analyzing prose for cuts and fat percentage...", flush=True)
     raw = call_judge(prompt)
     result = parse_json(raw)
     
     # Save log
     log_path = EDIT_LOG_DIR / f"ch{ch_num:02d}_cuts.json"
-    with open(log_path, "w") as f:
-        json.dump(result, f, indent=2)
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
     
     return result, word_count
+
 
 def main():
     if len(sys.argv) < 2:

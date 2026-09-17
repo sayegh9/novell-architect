@@ -14,7 +14,7 @@ from pathlib import Path
 from collections import Counter
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env")
 
 CHAPTERS_DIR = BASE_DIR / "chapters"

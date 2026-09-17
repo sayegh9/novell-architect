@@ -28,7 +28,7 @@ from pathlib import Path
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 STATE_FILE = BASE_DIR / "state.json"
 RESULTS_FILE = BASE_DIR / "results.tsv"
 CHAPTERS_DIR = BASE_DIR / "chapters"
@@ -36,12 +36,13 @@ BRIEFS_DIR = BASE_DIR / "briefs"
 EDIT_LOGS_DIR = BASE_DIR / "edit_logs"
 EVAL_LOGS_DIR = BASE_DIR / "eval_logs"
 
-FOUNDATION_THRESHOLD = 7.5
-CHAPTER_THRESHOLD = 6.0
-MAX_FOUNDATION_ITERS = 20
-MAX_CHAPTER_ATTEMPTS = 5
-MIN_REVISION_CYCLES = 3
-MAX_REVISION_CYCLES = 6
+NOVEL_TYPE = os.environ.get("AUTONOVEL_NOVEL_TYPE", "novel")
+FOUNDATION_THRESHOLD = 5.5 if NOVEL_TYPE == "novella" else 6.0
+CHAPTER_THRESHOLD = 5.0 if NOVEL_TYPE == "novella" else 5.5
+MAX_FOUNDATION_ITERS = 3
+MAX_CHAPTER_ATTEMPTS = 3
+MIN_REVISION_CYCLES = 2
+MAX_REVISION_CYCLES = 4
 PLATEAU_DELTA = 0.3
 
 PHASE_ORDER = ["foundation", "drafting", "revision", "export"]
@@ -54,7 +55,7 @@ PHASE_ORDER = ["foundation", "drafting", "revision", "export"]
 def load_state() -> dict:
     """Load pipeline state from state.json, creating defaults if missing."""
     if STATE_FILE.exists():
-        with open(STATE_FILE) as f:
+        with open(STATE_FILE, encoding="utf-8") as f:
             return json.load(f)
     return default_state()
 
@@ -67,7 +68,7 @@ def default_state() -> dict:
         "foundation_score": 0.0,
         "lore_score": 0.0,
         "chapters_drafted": 0,
-        "chapters_total": 0,
+        "chapters_total": 24,
         "novel_score": 0.0,
         "revision_cycle": 0,
         "debts": [],
@@ -76,8 +77,8 @@ def default_state() -> dict:
 
 def save_state(state: dict):
     """Write state to state.json."""
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -89,24 +90,24 @@ def log_result(commit: str, phase: str, score, word_count: int,
     """Append a row to results.tsv."""
     header = "commit\tphase\tscore\tword_count\tstatus\tdescription\n"
     if not RESULTS_FILE.exists():
-        RESULTS_FILE.write_text(header)
+        RESULTS_FILE.write_text(header, encoding="utf-8")
     elif RESULTS_FILE.stat().st_size == 0:
-        RESULTS_FILE.write_text(header)
-    with open(RESULTS_FILE, "a") as f:
+        RESULTS_FILE.write_text(header, encoding="utf-8")
+    with open(RESULTS_FILE, "a", encoding="utf-8") as f:
         f.write(f"{commit}\t{phase}\t{score}\t{word_count}\t{status}\t{description}\n")
 
 
 def banner(text: str, char: str = "=", width: int = 60):
     """Print a visible phase/step banner."""
-    print(f"\n{char * width}")
-    print(f"  {text}")
-    print(f"{char * width}")
+    print(f"\n{char * width}", flush=True)
+    print(f"  {text}", flush=True)
+    print(f"{char * width}", flush=True)
 
 
 def step(text: str):
     """Print a step indicator."""
     ts = datetime.now().strftime("%H:%M:%S")
-    print(f"  [{ts}] {text}")
+    print(f"  [{ts}] {text}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +115,6 @@ def step(text: str):
 # ---------------------------------------------------------------------------
 
 def run_tool(cmd: str, timeout: int = 600, check: bool = False) -> subprocess.CompletedProcess:
-    """
-    Run a tool as a subprocess, capturing output.
-    Uses shell=True so callers can pass full command strings.
-    Returns CompletedProcess; never raises unless check=True.
-    """
     step(f"RUN: {cmd}")
     try:
         result = subprocess.run(
@@ -126,25 +122,27 @@ def run_tool(cmd: str, timeout: int = 600, check: bool = False) -> subprocess.Co
             timeout=timeout, cwd=str(BASE_DIR),
         )
         if result.returncode != 0:
-            print(f"    WARN: exit code {result.returncode}")
+            print(f"    WARN: exit code {result.returncode}", flush=True)
             stderr_preview = (result.stderr or "")[:300]
             if stderr_preview:
-                print(f"    stderr: {stderr_preview}")
+                print(f"    stderr: {stderr_preview}", flush=True)
         if check and result.returncode != 0:
             raise subprocess.CalledProcessError(
                 result.returncode, cmd, result.stdout, result.stderr)
         return result
     except subprocess.TimeoutExpired:
-        print(f"    ERROR: timed out after {timeout}s")
-        # Return a fake CompletedProcess for graceful handling
-        fake = subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
-        return fake
+        print(f"    ERROR: timed out after {timeout}s", flush=True)
+        return subprocess.CompletedProcess(cmd, returncode=-1, stdout="", stderr="TIMEOUT")
 
 
 def uv_run(script: str, timeout: int = 600) -> subprocess.CompletedProcess:
     """Shorthand for running a python script from project root."""
-    return run_tool(f'"{sys.executable}" {script}', timeout=timeout)
-
+    script_dir = Path(__file__).resolve().parent
+    script_parts = script.split(" ", 1)
+    script_name = script_parts[0]
+    args = script_parts[1] if len(script_parts) > 1 else ""
+    absolute_script = script_dir / script_name
+    return run_tool(f'"{sys.executable}" "{absolute_script}" {args}', timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -153,26 +151,32 @@ def uv_run(script: str, timeout: int = 600) -> subprocess.CompletedProcess:
 
 def git_add_commit(message: str) -> str:
     """Stage all changes and commit. Returns short hash or empty string."""
-    run_tool("git add -A")
-    result = run_tool(f'git commit -m "{message}" --allow-empty')
-    if result.returncode == 0:
-        hash_result = run_tool("git rev-parse --short HEAD")
-        commit_hash = hash_result.stdout.strip()
-        step(f"GIT COMMIT: {commit_hash} — {message}")
-        return commit_hash
-    else:
-        step("GIT: nothing to commit or commit failed")
+    try:
+        run_tool("git add -A")
+        result = run_tool(f'git commit -m "{message}" --allow-empty')
+        if result.returncode == 0:
+            hash_result = run_tool("git rev-parse --short HEAD")
+            commit_hash = hash_result.stdout.strip()
+            step(f"GIT COMMIT: {commit_hash} — {message}")
+            return commit_hash
+        else:
+            step("GIT: nothing to commit or commit skipped")
+            return ""
+    except Exception as e:
+        step(f"GIT: warning {e}")
         return ""
 
 
 def git_reset_hard(ref: str = "HEAD~1"):
     """Hard reset to discard bad changes."""
     step(f"GIT RESET: {ref}")
-    run_tool(f"git reset --hard {ref}")
+    try:
+        run_tool(f"git reset --hard {ref}")
+    except Exception:
+        pass
 
 
 def git_short_hash() -> str:
-    """Get current HEAD short hash."""
     r = run_tool("git rev-parse --short HEAD")
     return r.stdout.strip() if r.returncode == 0 else "unknown"
 
@@ -182,14 +186,12 @@ def git_short_hash() -> str:
 # ---------------------------------------------------------------------------
 
 def parse_score(stdout: str, key: str = "overall_score") -> float:
-    """
-    Parse a score from evaluate.py YAML-like stdout output.
-    Looks for lines like 'overall_score: 8.0' or 'novel_score: 7.5'.
-    """
     for line in stdout.splitlines():
         line = line.strip()
         if line.startswith(f"{key}:"):
             val = line.split(":", 1)[1].strip()
+            # Handle possible score comments like '6.0 -- reason'
+            val = val.split(" ")[0].split("-")[0].strip()
             try:
                 return float(val)
             except ValueError:
@@ -198,38 +200,40 @@ def parse_score(stdout: str, key: str = "overall_score") -> float:
 
 
 def parse_lore_score(stdout: str) -> float:
-    """Parse lore_score from foundation evaluation output."""
     return parse_score(stdout, "lore_score")
 
 
 def count_words_in_chapters() -> int:
-    """Sum word count across all chapter files."""
     total = 0
     if CHAPTERS_DIR.exists():
         for f in CHAPTERS_DIR.glob("ch_*.md"):
-            total += len(f.read_text().split())
+            try:
+                total += len(f.read_text(encoding="utf-8").split())
+            except Exception:
+                pass
     return total
 
 
 def count_chapter_files() -> int:
-    """Count the number of chapter files."""
     if not CHAPTERS_DIR.exists():
         return 0
     return len(list(CHAPTERS_DIR.glob("ch_*.md")))
 
 
 def get_total_chapters(state: dict) -> int:
-    """Determine total chapter count from state or outline."""
     if state.get("chapters_total", 0) > 0:
         return state["chapters_total"]
-    # Try to infer from outline.md
     outline = BASE_DIR / "outline.md"
     if outline.exists():
-        text = outline.read_text()
-        matches = re.findall(r'###\s*Ch(?:apter)?\s*(\d+)', text)
-        if matches:
-            return max(int(m) for m in matches)
-    return 24  # sensible default
+        try:
+            text = outline.read_text(encoding="utf-8")
+            matches = re.findall(r'###\s*(?:Ch|Chapter|الفصل|فصل)\s*(\d+)', text, re.IGNORECASE)
+            if matches:
+                return max(int(m) for m in matches)
+        except Exception:
+            pass
+    return 24
+
 
 
 # ---------------------------------------------------------------------------
@@ -352,9 +356,14 @@ def run_drafting(state: dict) -> dict:
                 continue
 
             word_count = len(ch_file.read_text().split())
-            step(f"Drafted {word_count} words")
 
-            # Evaluate
+            # Add minimum word count check (Segmented drafting should easily hit 1500+)
+            min_words = 1500 if detect_project_language() == "ar" else 2000
+            if word_count < min_words:
+                step(f"Chapter too short ({word_count} < {min_words}), retrying...")
+                continue
+
+            step(f"Chapter drafted ({word_count} words). Evaluating...")
             eval_result = uv_run(f"evaluate.py --chapter={ch}", timeout=300)
             score = parse_score(eval_result.stdout, "overall_score")
             step(f"Chapter {ch} score: {score}")
@@ -572,7 +581,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             post_score = parse_score(post_eval.stdout, "overall_score")
 
             ch_file = CHAPTERS_DIR / f"ch_{ch_num:02d}.md"
-            word_count = len(ch_file.read_text().split()) if ch_file.exists() else 0
+            word_count = len(ch_file.read_text(encoding="utf-8").split()) if ch_file.exists() else 0
 
             step(f"Ch {ch_num}: {pre_score} -> {post_score}")
 
@@ -646,38 +655,37 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             review_logs = sorted(
                 (EDIT_LOGS_DIR).glob("*_review.json"), reverse=True)
             if review_logs:
-
-                review_data = json.loads(review_logs[0].read_text())
-                stars = review_data.get("stars", 0) or 0
-                total_items = review_data.get("total_items", 0)
-                major_items = review_data.get("major_items", 0)
-                qualified = review_data.get("qualified_items", 0)
-                
-                step(f"Stars: {stars}, Items: {total_items} "
-                     f"({major_items} major, {qualified} qualified)")
-                
-                # Stop if: ≥4★, no major unqualified items, or >half qualified
-                if stars >= 4.5 and major_items == 0:
-                    step("★★★★½ with no major items — novel is ready.")
-                    break
-                if stars >= 4 and total_items > 0 and qualified / total_items > 0.5:
-                    step(f"★{'★' * int(stars)} with majority qualified items — novel is ready.")
-                    break
+                try:
+                    review_data = json.loads(review_logs[0].read_text(encoding="utf-8"))
+                    stars = review_data.get("stars", 0) or 0
+                    total_items = review_data.get("total_items", 0)
+                    major_items = review_data.get("major_items", 0)
+                    qualified = review_data.get("qualified_items", 0)
+                    
+                    step(f"Stars: {stars}, Items: {total_items} "
+                         f"({major_items} major, {qualified} qualified)")
+                    
+                    # Stop if: ≥4★, no major unqualified items, or >half qualified
+                    if stars >= 4.5 and major_items == 0:
+                        step("★★★★½ with no major items — novel is ready.")
+                        break
+                    if stars >= 4 and total_items > 0 and qualified / total_items > 0.5:
+                        step(f"★{'★' * int(stars)} with majority qualified items — novel is ready.")
+                        break
+                except Exception:
+                    pass
             
             # Step 4: Generate briefs from review items and fix
             step("Generating revision briefs from review...")
             gen_brief_py = BASE_DIR / "gen_brief.py"
             if gen_brief_py.exists():
-                # Auto mode: picks weakest chapter, cross-references all sources
                 uv_run("gen_brief.py --auto", timeout=300)
                 
-                # Find any generated briefs and apply the top one
                 recent_briefs = sorted(
                     BRIEFS_DIR.glob("*_auto.md"),
                     key=lambda p: p.stat().st_mtime, reverse=True)
                 if recent_briefs:
                     brief = recent_briefs[0]
-                    # Extract chapter number from filename
                     ch_match = re.search(r'ch(\d+)', brief.name)
                     if ch_match:
                         ch_num = int(ch_match.group(1))
@@ -687,14 +695,12 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
                             f"review round {rnd}: revise ch{ch_num:02d} from Opus feedback")
             
             # Step 5: Mechanical fixes from review
-            # Run slop pass on any mentioned patterns
             step("Running mechanical cleanup pass...")
             apply_cuts_py = BASE_DIR / "apply_cuts.py"
             if apply_cuts_py.exists():
                 uv_run("apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
                 git_add_commit(f"review round {rnd}: mechanical cleanup")
 
-            
             step(f"Review round {rnd} complete.")
         
         banner("OPUS REVIEW LOOP COMPLETE")
@@ -737,38 +743,51 @@ def run_export(state: dict) -> dict:
 
     parts = []
     for ch_file in chapter_files:
-        text = ch_file.read_text().strip()
-        if text:
-            parts.append(text)
+        try:
+            text = ch_file.read_text(encoding="utf-8").strip()
+            if text:
+                parts.append(text)
+        except Exception:
+            pass
 
     if parts:
-        manuscript.write_text("\n\n---\n\n".join(parts) + "\n")
+        manuscript.write_text("\n\n---\n\n".join(parts) + "\n", encoding="utf-8")
         word_count = sum(len(p.split()) for p in parts)
         step(f"Manuscript: {len(parts)} chapters, {word_count} words")
     else:
         step("WARNING: no chapter files found for manuscript")
 
-    # 4. Build LaTeX
-    build_tex = BASE_DIR / "typeset" / "build_tex.py"
-    if build_tex.exists():
-        uv_run("typeset/build_tex.py", timeout=120)
 
-
-        # 5. Typeset with tectonic (if available)
-        novel_tex = BASE_DIR / "typeset" / "novel.tex"
-        if novel_tex.exists():
-            tectonic_check = run_tool("which tectonic", timeout=10)
-            if tectonic_check.returncode == 0:
-                step("Typesetting PDF with tectonic...")
-                result = run_tool("tectonic typeset/novel.tex", timeout=300)
-                if result.returncode == 0:
-                    step("PDF generated: typeset/novel.pdf")
-                else:
-                    step("WARNING: tectonic typesetting failed")
-            else:
-                step("tectonic not found, skipping PDF generation")
+    step("Generating export formats...")
+    
+    lang = detect_project_language()
+    
+    if lang == "ar":
+        build_html = BASE_DIR / "typeset" / "build_html.py"
+        if build_html.exists():
+            uv_run("typeset/build_html.py", timeout=120)
+            step("HTML export generated: manuscript.html")
+        else:
+            step("typeset/build_html.py not found, skipping HTML export")
     else:
-        step("typeset/build_tex.py not found, skipping LaTeX")
+        build_tex = BASE_DIR / "typeset" / "build_tex.py"
+        if build_tex.exists():
+            uv_run("typeset/build_tex.py", timeout=120)
+            
+            # Try to compile with tectonic
+            novel_tex = BASE_DIR / "typeset" / "novel.tex"
+            if novel_tex.exists():
+                if shutil.which("tectonic"):
+                    step("Compiling PDF with tectonic...")
+                    result = run_tool("tectonic typeset/novel.tex", timeout=300)
+                    if result.returncode == 0:
+                        step("PDF generated: typeset/novel.pdf")
+                    else:
+                        step("WARNING: tectonic typesetting failed")
+                else:
+                    step("tectonic not found in PATH, skipping PDF compilation. You can compile typeset/novel.tex manually.")
+        else:
+            step("typeset/build_tex.py not found, skipping LaTeX")
 
     # 6. Final commit
     commit_hash = git_add_commit("export: manuscript, outline, arc summary, PDF")

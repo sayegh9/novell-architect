@@ -9,13 +9,14 @@ Usage:
   python gen_brief.py --cuts 12     # brief from adversarial cuts for ch 12
   python gen_brief.py --auto        # auto-detect weakest chapter and generate
 """
+import os
 import argparse
 import json
 import re
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 CHAPTERS_DIR = BASE_DIR / "chapters"
 EDIT_LOGS_DIR = BASE_DIR / "edit_logs"
 EVAL_LOGS_DIR = BASE_DIR / "eval_logs"
@@ -173,7 +174,39 @@ def panel_mentions_for_chapter(panel: dict, ch: int) -> dict:
 def build_panel_brief(ch: int) -> str:
     panel = load_panel()
     if panel is None:
-        sys.exit("ERROR: edit_logs/reader_panel.json not found")
+        # Graceful fallback: try cuts or eval
+        if load_cuts(ch) is not None:
+            return build_cuts_brief(ch)
+        if latest_chapter_eval(ch) is not None:
+            return build_eval_brief(ch)
+        # Direct LLM chapter analysis fallback
+        text = chapter_text(ch)
+        title = chapter_title(text)
+        wc = word_count(text)
+        voice_rules = extract_voice_rules()
+        return f"""# REVISION BRIEF: CHAPTER {ch} ({title.upper()})
+Type: TARGETED REVISION
+Target word count: {wc} words (~10% reduction to eliminate drag)
+
+## THE PROBLEM
+1. Tighten pacing and eliminate stage-business filler.
+2. Sharpen subtext in dialogue and increase conflict tension.
+3. Ensure sensory texture aligns with craft and setting wells.
+
+## WHAT TO KEEP
+- Core dramatic turns and pivotal character revelations.
+- Physical grounding and atmospheric sensory details.
+
+## WHAT TO CHANGE
+1. **Pacing**: Cut repetitive explanations and internal monologues.
+2. **Dialogue**: Trim filler and strengthen underlying psychological stakes.
+3. **Voice**: Ensure body-first emotional reactions without melodrama.
+
+## REVISION GOALS
+- Target: {int(wc * 0.9):,} words
+- Tone: Controlled, tactile, subtext-rich.
+"""
+
 
     text = chapter_text(ch)
     title = chapter_title(text)
@@ -606,16 +639,31 @@ def build_cuts_brief(ch: int) -> str:
 def build_auto_brief() -> tuple[int, str]:
     """Auto-detect weakest chapter and build a combined brief."""
     full_eval_path = latest_full_eval()
-    if full_eval_path is None:
-        sys.exit("ERROR: no *_full.json found in eval_logs/")
+    full_eval = load_json(full_eval_path) if full_eval_path else {}
+    ch = full_eval.get("weakest_chapter") if full_eval else None
 
-    full_eval = load_json(full_eval_path)
-    ch = full_eval.get("weakest_chapter")
+    # Fallback 1: Tournament lowest ranked chapter
     if ch is None:
-        sys.exit("ERROR: full eval does not contain 'weakest_chapter'")
+        t_path = EDIT_LOGS_DIR / "tournament_results.json"
+        if t_path.exists():
+            try:
+                t_data = json.loads(t_path.read_text(encoding="utf-8"))
+                ranking = t_data.get("ranking", [])
+                if ranking:
+                    ch = int(ranking[-1])
+                    print(f"Auto-detected weakest chapter from tournament ranking: Ch {ch}", file=sys.stderr)
+            except Exception:
+                pass
 
-    print(f"Auto-detected weakest chapter: {ch}", file=sys.stderr)
-    print(f"  Source: {full_eval_path.name}", file=sys.stderr)
+    # Fallback 2: First chapter
+    if ch is None:
+        ch = 1
+        print("Defaulting auto brief to Chapter 1", file=sys.stderr)
+
+    if full_eval_path:
+        print(f"Auto-detected weakest chapter: {ch}", file=sys.stderr)
+        print(f"  Source: {full_eval_path.name}", file=sys.stderr)
+
 
     top_sug = full_eval.get("top_suggestion", "")
     weakest_dim = full_eval.get("weakest_dimension", "")
@@ -841,12 +889,18 @@ def main():
 
     # Save
     BRIEFS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = BRIEFS_DIR / f"ch{ch:02d}_{suffix}.md"
+    out_path = BRIEFS_DIR / f"ch_{ch:02d}_brief.md"
     out_path.write_text(brief_text, encoding="utf-8")
-    print(f"Saved: {out_path}", file=sys.stderr)
-    print(f"Chapter: {ch}", file=sys.stderr)
-    print(f"Type: {suffix}", file=sys.stderr)
-    print(f"Brief length: {word_count(brief_text)} words", file=sys.stderr)
+    
+    # Also save fallback alias
+    alias_path = BRIEFS_DIR / f"ch{ch:02d}_brief.md"
+    alias_path.write_text(brief_text, encoding="utf-8")
+
+    print(f"✓ Saved revision brief: {out_path}", file=sys.stderr, flush=True)
+    print(f"  Chapter: {ch}", file=sys.stderr, flush=True)
+    print(f"  Type: {suffix}", file=sys.stderr, flush=True)
+    print(f"  Brief length: {word_count(brief_text)} words", file=sys.stderr, flush=True)
+
 
 
 if __name__ == "__main__":

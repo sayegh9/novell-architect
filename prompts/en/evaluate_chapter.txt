@@ -1,0 +1,67 @@
+Evaluate this literary novel chapter against the planning docs.
+
+SCORING CALIBRATION:
+  9-10: Among the best chapters you've read in published fiction.
+  7-8:  Strong, publishable with editorial polish. Specific flaws exist.
+  5-6:  Functional but flat. A competent draft that needs substantial revision.
+  3-4:  Significant problems. Voice breaks, beats missed, prose generic.
+  1-2:  Not usable. Rewrite from scratch.
+
+  The MEDIAN score for a competent AI-generated chapter should be 6.
+  Most dimensions should score 6-7. Reserve 8+ for genuine excellence.
+
+MANDATORY: For each dimension, you must identify:
+  (a) The single WEAKEST MOMENT -- quote the specific sentence or passage
+  (b) What would make it better -- a concrete revision, not a vague note
+
+VOICE DEFINITION:
+{voice}
+
+WORLD BIBLE (summary):
+{world}
+
+CHARACTER REGISTRY:
+{characters}
+
+CANON (established hard facts):
+{canon}
+
+CHAPTER OUTLINE ENTRY:
+{chapter_outline}
+
+PREVIOUS CHAPTER (last 1500 words):
+{prev_chapter_tail}
+
+THE CHAPTER TO EVALUATE:
+{chapter_text}
+
+Score these dimensions (0-10):
+- voice_adherence: Does the prose match voice.md? 
+- beat_coverage: Did it hit every beat from the outline in scenes (not summary)?
+- character_voice: Remove dialogue tags mentally. Can you tell who's speaking?
+- plants_seeded: Were foreshadowing elements placed naturally?
+- prose_quality: Sentence variety, specificity, show-don't-tell.
+- continuity: Does it follow logically from the previous chapter?
+- canon_compliance: Check ALL facts against canon.
+- lore_integration: Does the world do WORK in this chapter?
+- engagement: Would a reader turn the page?
+
+Respond with JSON:
+{{
+  "voice_adherence": {{"score": 0, "weakest_moment": "quote", "fix": "...", "note": "..."}},
+  "beat_coverage": {{"score": 0, "weakest_moment": "...", "fix": "...", "note": "..."}},
+  "character_voice": {{"score": 0, "weakest_moment": "...", "fix": "...", "note": "..."}},
+  "plants_seeded": {{"score": 0, "weakest_moment": "...", "fix": "...", "note": "..."}},
+  "prose_quality": {{"score": 0, "weakest_sentence": "quote", "fix": "...", "strongest_sentence": "quote", "note": "..."}},
+  "continuity": {{"score": 0, "note": "..."}},
+  "canon_compliance": {{"score": 0, "violations": [], "note": "..."}},
+  "lore_integration": {{"score": 0, "weakest_moment": "...", "fix": "...", "note": "..."}},
+  "engagement": {{"score": 0, "weakest_moment": "...", "fix": "...", "note": "..."}},
+  "three_weakest_sentences": [],
+  "three_strongest_sentences": [],
+  "ai_patterns_detected": [],
+  "overall_score": 0,
+  "weakest_dimension": "...",
+  "top_3_revisions": [],
+  "new_canon_entries": []
+}}

@@ -19,8 +19,9 @@ BASE = Path(__file__).resolve().parent
 CHAPTERS_DIR = BASE / "chapters"
 EDIT_LOGS_DIR = BASE / "edit_logs"
 
+import os
 VALID_TYPES = {"OVER-EXPLAIN", "REDUNDANT", "FAT", "TELL", "STRUCTURAL", "GENERIC"}
-MIN_QUOTE_LEN = 25
+MIN_QUOTE_LEN = 15 if os.environ.get("AUTONOVEL_LANGUAGE") == "ar" else 25
 
 
 def load_cuts(chapter_num: int) -> dict | None:
@@ -53,11 +54,38 @@ def find_and_remove(text: str, quote: str) -> tuple[str, bool, str]:
     if count > 1:
         return text, False, f"ambiguous ({count} matches)"
 
-    # Normalised whitespace match: collapse runs of whitespace in both the
-    # text and the quote to single spaces, search, then map back to the
-    # original span.
+    # Normalised whitespace match
     ws = re.compile(r"\s+")
     norm_quote = ws.sub(" ", quote).strip()
+    
+    # Optional Arabic normalization
+    if os.environ.get("AUTONOVEL_LANGUAGE") == "ar":
+        import unicodedata
+        def normalize_arabic(s: str) -> str:
+            s = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670]', '', s) # tashkeel
+            s = s.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+            s = s.replace('ة', 'ه').replace('ى', 'ي')
+            return s
+        
+        norm_quote = normalize_arabic(norm_quote)
+        norm_text = normalize_arabic(text)
+        
+        # Build flexible regex on normalized text
+        tokens = norm_quote.split(" ")
+        pattern = r"\s+".join(re.escape(t) for t in tokens)
+        matches = list(re.finditer(pattern, norm_text))
+        if len(matches) == 1:
+            # We found it in normalized text, but we need to cut it from original text.
+            # This is tricky without alignment. For now, try a looser regex on original text.
+            loose_pattern = r"\s+".join(re.escape(t) for t in ws.sub(" ", quote).strip().split(" "))
+            loose_matches = list(re.finditer(loose_pattern, text))
+            if len(loose_matches) == 1:
+                m = loose_matches[0]
+                text = text[:m.start()] + text[m.end():]
+                return text, True, ""
+    else:
+        MIN_QUOTE_LEN = 25
+
     if len(norm_quote) < MIN_QUOTE_LEN:
         return text, False, "quote too short after normalisation"
 

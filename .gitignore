@@ -8,3 +8,8 @@ __pycache__/
 typeset/*.pdf
 typeset/chapters_content.tex
 *.pdf
+*.log
+.DS_Store
+**/.DS_Store
+projects/
+

@@ -2,7 +2,7 @@ import os
 import re
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 
 def is_arabic_text(text: str) -> bool:
     """Check if the given text contains a significant amount of Arabic characters."""
@@ -37,32 +37,15 @@ def detect_project_language() -> str:
 
     return "en"
 
-def get_arabic_writer_system_prompt() -> str:
-    return (
-        "أنت كاتب وروائي محترف في الأدب القصصي الرفيع، تكتب فصول روايات باللغة العربية الفصحى الأصيلة.\n"
-        "تنبيه صارم: ابدأ كتابة نص الفصل مباشرة دون أي مقدمات تحاورية، أو مجاملات، أو تعليقات تمهيدية "
-        "(ممنوع تماماً عبارات مثل: 'بالتأكيد، سأكتب...' أو 'إليك الفصل الأول...' أو 'حسناً'). ابدأ فوراً بعنوان الفصل أو الفقرة الأولى.\n\n"
-        "القواعد الصارمة للكتابة:\n"
-        "1. الكتابة بضمير الغائب المحدود (Third-person limited) في زمن الماضي، مقيداً بوجهة نظر بطل الفصل.\n"
-        "2. لغة عربية فصيحة، سبك أدبي متين، مع تجنب الترجمة الحرفية للكليشيهات الإنجليزية.\n"
-        "3. إظهار المشاعر عبر ردود الفعل الجسدية والحسية المباشرة (Body-First Sensory Details).\n"
-        "4. الحوار باللغة العربية الفصحى الطبيعية الحية (Spoken Literary Fusha) التي تعكس الفوارق الطبقية والشخصية.\n"
-        "5. الالتزام الصارم بجميع نبضات المخطط وأحداث الفصل دون حذف أو اختصار.\n"
-        "6. كتابة النص السردي الكامل للفصل دون وضع ملخصات أو نقاط مجتزأة."
-    )
-
-def get_english_writer_system_prompt() -> str:
-    return (
-        "You are a literary fiction writer drafting a fantasy novel chapter. "
-        "CRITICAL: Do NOT include any conversational preamble, pleasantries, or meta-commentary "
-        "(e.g. 'Sure, here is...', 'Certainly, I will write...'). Start IMMEDIATELY with the chapter heading or first scene paragraph.\n\n"
-        "You write in third-person limited past tense, locked to one POV character. "
-        "You follow the voice definition exactly. You hit every beat in the outline. "
-        "You never use words from the banned list. You show, never tell emotions. "
-        "Your prose is specific, sensory, grounded. Metaphors come from the character's "
-        "experience. You vary sentence length. You trust the reader. "
-        "You write the FULL chapter -- do not truncate, summarize, or skip ahead."
-    )
+def load_prompt(template_name: str) -> str:
+    """Load a prompt template from the prompts directory based on the project language."""
+    lang = detect_project_language()
+    prompt_path = BASE_DIR / "prompts" / lang / f"{template_name}.txt"
+    
+    if not prompt_path.exists():
+        raise FileNotFoundError(f"Prompt template {template_name}.txt not found for language '{lang}' at {prompt_path}")
+        
+    return prompt_path.read_text(encoding="utf-8")
 
 def clean_chapter_text(text: str, chapter_num: int = 1) -> str:
     """Strip out markdown code fences, conversational preambles, and meta-commentary."""

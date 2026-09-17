@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 sys.path.insert(0, str(BASE_DIR))
 
 import llm

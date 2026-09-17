@@ -30,8 +30,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent.resolve()
-load_dotenv(BASE_DIR / ".env", override=True)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
+load_dotenv(SCRIPT_DIR / ".env", override=True)
 
 app = FastAPI(title="Autonovel Studio API", version="1.0.0")
 
@@ -82,11 +83,17 @@ job_state = JobState()
 # ============================================================================
 
 def get_state() -> dict:
-    state_file = BASE_DIR / "state.json"
+    state_file = PROJECT_DIR / "state.json"
     if state_file.exists():
         try:
             data = json.loads(state_file.read_text())
-            chapters_dir = BASE_DIR / "chapters"
+            if isinstance(data.get("state"), dict):
+                nested = data.pop("state")
+                for k, v in nested.items():
+                    if k not in data:
+                        data[k] = v
+                state_file.write_text(json.dumps(data, indent=2))
+            chapters_dir = PROJECT_DIR / "chapters"
             actual_count = len(list(chapters_dir.glob("ch_*.md"))) if chapters_dir.exists() else 0
             if actual_count == 0 and data.get("chapters_drafted", 0) > 0:
                 data["chapters_drafted"] = 0
@@ -95,6 +102,27 @@ def get_state() -> dict:
             elif data.get("chapters_drafted", 0) > actual_count:
                 data["chapters_drafted"] = actual_count
                 state_file.write_text(json.dumps(data, indent=2))
+
+            # Auto-sync foundation_score if 0.0 or unset from latest foundation eval log
+            if float(data.get("foundation_score", 0.0)) == 0.0:
+                eval_logs_dir = PROJECT_DIR / "eval_logs"
+                if eval_logs_dir.exists():
+                    f_logs = sorted(eval_logs_dir.glob("*_foundation.json"), reverse=True)
+                    if f_logs:
+                        try:
+                            f_data = json.loads(f_logs[0].read_text(encoding="utf-8"))
+                            updated = False
+                            if "overall_score" in f_data:
+                                data["foundation_score"] = float(f_data["overall_score"])
+                                updated = True
+                            if "lore_score" in f_data:
+                                data["lore_score"] = float(f_data["lore_score"])
+                                updated = True
+                            if updated:
+                                state_file.write_text(json.dumps(data, indent=2))
+                        except Exception:
+                            pass
+
             return data
         except Exception:
             pass
@@ -113,7 +141,7 @@ def get_state() -> dict:
     }
 
 def get_results_tsv() -> List[dict]:
-    results_file = BASE_DIR / "results.tsv"
+    results_file = PROJECT_DIR / "results.tsv"
     if not results_file.exists():
         return []
     lines = results_file.read_text().splitlines()
@@ -141,7 +169,7 @@ def api_get_state():
     results = get_results_tsv()
     
     # Calculate word count & chapters count
-    chapters_dir = BASE_DIR / "chapters"
+    chapters_dir = PROJECT_DIR / "chapters"
     chapters_list = []
     total_words = 0
     if chapters_dir.exists():
@@ -165,6 +193,7 @@ def api_get_state():
         "chapters": chapters_list,
         "total_words": total_words,
         "chapters_count": len(chapters_list),
+        "project_name": PROJECT_DIR.name,
         "is_job_running": job_state.is_running,
         "current_cmd": job_state.current_cmd,
         "env_keys": {
@@ -186,7 +215,7 @@ def api_list_files():
     ]
     files = []
     for k in doc_keys:
-        p = BASE_DIR / k
+        p = PROJECT_DIR / k
         files.append({
             "name": k,
             "exists": p.exists(),
@@ -201,7 +230,7 @@ def api_read_file(filename: str):
     """Read a specific planning document."""
     # Sanitize path
     safe_filename = Path(filename).name
-    p = BASE_DIR / safe_filename
+    p = PROJECT_DIR / safe_filename
     if not p.exists():
         raise HTTPException(status_code=404, detail=f"File {safe_filename} not found")
     return {
@@ -218,7 +247,7 @@ class SaveFileRequest(BaseModel):
 def api_save_file(filename: str, req: SaveFileRequest):
     """Save content to a planning document."""
     safe_filename = Path(filename).name
-    p = BASE_DIR / safe_filename
+    p = PROJECT_DIR / safe_filename
     p.write_text(req.content)
     return {"status": "saved", "filename": safe_filename, "size": len(req.content)}
 
@@ -226,7 +255,7 @@ def api_save_file(filename: str, req: SaveFileRequest):
 @app.get("/api/chapters/{ch_num}")
 def api_get_chapter(ch_num: int):
     """Get a chapter's content and latest evaluation/cut logs."""
-    ch_path = BASE_DIR / "chapters" / f"ch_{ch_num:02d}.md"
+    ch_path = PROJECT_DIR / "chapters" / f"ch_{ch_num:02d}.md"
     if not ch_path.exists():
         raise HTTPException(status_code=404, detail=f"Chapter {ch_num} not found")
     
@@ -235,7 +264,7 @@ def api_get_chapter(ch_num: int):
     title = re.sub(r'^[#\s\*]+|[#\s\*]+$', '', raw_first_line).strip() or f"Chapter {ch_num}"
     
     # Check for cuts in edit_logs
-    cuts_file = BASE_DIR / "edit_logs" / f"ch{ch_num:02d}_cuts.json"
+    cuts_file = PROJECT_DIR / "edit_logs" / f"ch{ch_num:02d}_cuts.json"
     cuts_data = None
     if cuts_file.exists():
         try:
@@ -258,7 +287,7 @@ class SaveChapterRequest(BaseModel):
 @app.post("/api/chapters/{ch_num}")
 def api_save_chapter(ch_num: int, req: SaveChapterRequest):
     """Save edited prose for a chapter."""
-    chapters_dir = BASE_DIR / "chapters"
+    chapters_dir = PROJECT_DIR / "chapters"
     chapters_dir.mkdir(exist_ok=True)
     ch_path = chapters_dir / f"ch_{ch_num:02d}.md"
     ch_path.write_text(req.content)
@@ -272,7 +301,7 @@ def api_save_chapter(ch_num: int, req: SaveChapterRequest):
 @app.get("/api/logs/eval")
 def api_get_eval_logs():
     """List all evaluation logs."""
-    logs_dir = BASE_DIR / "eval_logs"
+    logs_dir = PROJECT_DIR / "eval_logs"
     if not logs_dir.exists():
         return []
     logs = []
@@ -292,7 +321,7 @@ def api_get_eval_logs():
 @app.get("/api/logs/edit")
 def api_get_edit_logs():
     """Get editorial tournament, reader panel, and review logs."""
-    edit_dir = BASE_DIR / "edit_logs"
+    edit_dir = PROJECT_DIR / "edit_logs"
     if not edit_dir.exists():
         return {}
 
@@ -332,6 +361,65 @@ def api_get_edit_logs():
     }
 
 
+
+@app.get("/api/logs/eval/{ch_num}")
+def api_get_eval_log_single(ch_num: str):
+    import json
+    logs_dir = PROJECT_DIR / "eval_logs"
+    try:
+        ch_int = int(ch_num)
+        p1 = logs_dir / f"eval_ch{ch_int:02d}.json"
+        p2 = logs_dir / f"eval_ch{ch_int}.json"
+        if p1.exists(): return json.loads(p1.read_text(encoding="utf-8"))
+        if p2.exists(): return json.loads(p2.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    raise HTTPException(status_code=404, detail="Eval log not found")
+
+@app.get("/api/analytics/revision_health")
+def api_get_revision_health():
+    import json
+    state_file = PROJECT_DIR / "state.json"
+    tsv_path = PROJECT_DIR / "results.tsv"
+    
+    current_cycle = 0
+    if state_file.exists():
+        try: current_cycle = json.loads(state_file.read_text(encoding="utf-8")).get("revision_cycle", 0)
+        except Exception: pass
+        
+    score_delta = 0.0
+    plateau_approaching = False
+    
+    if tsv_path.exists():
+        lines = [l.strip() for l in tsv_path.read_text(encoding="utf-8").split("\n") if l.strip()]
+        if len(lines) > 1:
+            header = lines[0].split("\t")
+            if "score" in header and "phase" in header:
+                s_idx = header.index("score")
+                p_idx = header.index("phase")
+                scores = []
+                for l in reversed(lines[1:]):
+                    parts = l.split("\t")
+                    if len(parts) > max(s_idx, p_idx) and parts[p_idx] == "export":
+                        pass # Ignore export row
+                    elif len(parts) > max(s_idx, p_idx) and parts[s_idx] != "-":
+                        try: scores.append(float(parts[s_idx]))
+                        except Exception: pass
+                if len(scores) >= 2:
+                    score_delta = round(scores[0] - scores[1], 2)
+                    plateau_approaching = score_delta < 0.5
+                    
+    ready_to_export = plateau_approaching and current_cycle >= 2
+    
+    return {
+        "current_cycle": current_cycle,
+        "score_delta": score_delta,
+        "plateau_approaching": plateau_approaching,
+        "opus_items_qualified_pct": 0.0,
+        "ready_to_export": ready_to_export
+    }
+
+
 # ============================================================================
 # Editorial, Cuts & Briefs Endpoints
 # ============================================================================
@@ -343,7 +431,7 @@ class ApplyCutsCustomRequest(BaseModel):
 @app.post("/api/editorial/apply_cuts_custom")
 def api_apply_cuts_custom(req: ApplyCutsCustomRequest):
     """Surgically remove specific quotes from a chapter."""
-    ch_path = BASE_DIR / "chapters" / f"ch_{req.chapter:02d}.md"
+    ch_path = PROJECT_DIR / "chapters" / f"ch_{req.chapter:02d}.md"
     if not ch_path.exists():
         raise HTTPException(status_code=404, detail=f"Chapter {req.chapter} not found")
 
@@ -387,7 +475,7 @@ def api_apply_cuts_custom(req: ApplyCutsCustomRequest):
 @app.get("/api/editorial/briefs")
 def api_get_briefs():
     """List all available revision briefs."""
-    briefs_dir = BASE_DIR / "briefs"
+    briefs_dir = PROJECT_DIR / "briefs"
     briefs_dir.mkdir(exist_ok=True, parents=True)
     briefs_list = []
 
@@ -411,7 +499,7 @@ def api_get_briefs():
 @app.get("/api/editorial/briefs/{ch_num}")
 def api_get_brief_single(ch_num: int):
     """Get single revision brief."""
-    briefs_dir = BASE_DIR / "briefs"
+    briefs_dir = PROJECT_DIR / "briefs"
     for pattern in (f"ch_{ch_num:02d}_brief.md", f"ch{ch_num:02d}_brief.md", f"ch_{ch_num}_brief.md"):
         p = briefs_dir / pattern
         if p.exists():
@@ -429,7 +517,7 @@ class SaveBriefRequest(BaseModel):
 @app.post("/api/editorial/briefs/{ch_num}")
 def api_save_brief_single(ch_num: int, req: SaveBriefRequest):
     """Save/update a revision brief."""
-    briefs_dir = BASE_DIR / "briefs"
+    briefs_dir = PROJECT_DIR / "briefs"
     briefs_dir.mkdir(exist_ok=True, parents=True)
     target = briefs_dir / f"ch_{ch_num:02d}_brief.md"
     target.write_text(req.content, encoding="utf-8")
@@ -443,11 +531,11 @@ def api_save_brief_single(ch_num: int, req: SaveBriefRequest):
 @app.get("/api/foundation/voice_metrics")
 def api_get_voice_metrics():
     """Get calculated voice metrics."""
-    vf_path = BASE_DIR / "edit_logs" / "voice_fingerprint.json"
+    vf_path = PROJECT_DIR / "edit_logs" / "voice_fingerprint.json"
     if not vf_path.exists():
         try:
             import subprocess
-            subprocess.run([sys.executable, str(BASE_DIR / "voice_fingerprint.py")], check=False)
+            subprocess.run([sys.executable, str(PROJECT_DIR / "voice_fingerprint.py")], check=False)
         except Exception:
             pass
 
@@ -478,7 +566,7 @@ def api_post_voice_fingerprint_custom(req: VoiceFingerprintCustomRequest):
 def api_get_analytics():
     """Compute and aggregate novel convergence, ELO, chapter scores, and word count trajectory."""
     # 1. Parse results.tsv
-    tsv_path = BASE_DIR / "results.tsv"
+    tsv_path = PROJECT_DIR / "results.tsv"
     history = []
     if tsv_path.exists():
         lines = tsv_path.read_text(encoding="utf-8").strip().split("\n")
@@ -499,9 +587,9 @@ def api_get_analytics():
                     history.append(row)
 
     # 2. Per-chapter matrix
-    chapters_dir = BASE_DIR / "chapters"
-    edit_logs_dir = BASE_DIR / "edit_logs"
-    eval_logs_dir = BASE_DIR / "eval_logs"
+    chapters_dir = PROJECT_DIR / "chapters"
+    edit_logs_dir = PROJECT_DIR / "edit_logs"
+    eval_logs_dir = PROJECT_DIR / "eval_logs"
     ch_matrix = []
 
     # Get tournament ELO lookup
@@ -590,7 +678,7 @@ def api_get_analytics():
 def api_get_settings():
     """Get active engine model and temperature configuration."""
     from language_utils import detect_project_language
-    settings_file = BASE_DIR / "settings.json"
+    settings_file = PROJECT_DIR / "settings.json"
     if settings_file.exists():
         try:
             stored = json.loads(settings_file.read_text(encoding="utf-8"))
@@ -607,6 +695,7 @@ def api_get_settings():
         "temperature": float(os.environ.get("AUTONOVEL_TEMPERATURE", "0.75")),
         "target_words": int(os.environ.get("AUTONOVEL_TARGET_WORDS", "3500")),
         "language": os.environ.get("AUTONOVEL_LANGUAGE", detect_project_language()),
+        "novel_type": os.environ.get("AUTONOVEL_NOVEL_TYPE", "novel"),
         "has_gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
         "has_anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
     }
@@ -620,11 +709,12 @@ class SettingsUpdateRequest(BaseModel):
     temperature: Optional[float] = None
     target_words: Optional[int] = None
     language: Optional[str] = None
+    novel_type: Optional[str] = None
 
 @app.post("/api/settings")
 def api_update_settings(req: SettingsUpdateRequest):
     """Update settings in .env and runtime environment."""
-    env_file = BASE_DIR / ".env"
+    env_file = PROJECT_DIR / ".env"
     env_content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
     lines = env_content.splitlines()
     env_map = {}
@@ -649,6 +739,9 @@ def api_update_settings(req: SettingsUpdateRequest):
     if req.language is not None:
         env_map["AUTONOVEL_LANGUAGE"] = req.language
         os.environ["AUTONOVEL_LANGUAGE"] = req.language
+    if req.novel_type is not None:
+        env_map["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
+        os.environ["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
 
     new_lines = []
     for k, v in env_map.items():
@@ -659,7 +752,7 @@ def api_update_settings(req: SettingsUpdateRequest):
     except Exception as e:
         print(f"Note: .env update skipped ({e}), updating settings.json and os.environ")
         # Save to settings.json
-        settings_file = BASE_DIR / "settings.json"
+        settings_file = PROJECT_DIR / "settings.json"
         settings_file.write_text(json.dumps(env_map, indent=2), encoding="utf-8")
 
     return {"status": "updated", "settings": api_get_settings()}
@@ -674,12 +767,12 @@ def api_update_settings(req: SettingsUpdateRequest):
 @app.get("/api/export/manuscript")
 def api_export_manuscript():
     """Concatenate all drafted chapters into a complete manuscript."""
-    chapters_dir = BASE_DIR / "chapters"
+    chapters_dir = PROJECT_DIR / "chapters"
     files = sorted(chapters_dir.glob("ch_*.md"))
     
     # Title
     title = "Manuscript"
-    outline_path = BASE_DIR / "outline.md"
+    outline_path = PROJECT_DIR / "outline.md"
     if outline_path.exists():
         first_line = outline_path.read_text(encoding="utf-8").split("\n")[0]
         title = first_line.lstrip("# ").strip() or title
@@ -703,7 +796,7 @@ def api_export_manuscript():
     full_content = "\n\n---\n\n".join(parts)
     
     # Check if LaTeX typeset output exists
-    tex_path = BASE_DIR / "typeset" / "chapters_content.tex"
+    tex_path = PROJECT_DIR / "typeset" / "chapters_content.tex"
     has_typeset = tex_path.exists() and tex_path.stat().st_size > 50
 
     return {
@@ -719,7 +812,7 @@ def api_export_manuscript():
 @app.get("/api/export/art")
 def api_export_art():
     """Get visual style and generated art direction concepts."""
-    art_dir = BASE_DIR / "art"
+    art_dir = PROJECT_DIR / "art"
     style = {}
     directions = {}
     picks = {}
@@ -750,7 +843,7 @@ def api_export_art():
 @app.get("/api/export/audiobook")
 def api_export_audiobook():
     """Get parsed audiobook scripts."""
-    scripts_dir = BASE_DIR / "audiobook" / "scripts"
+    scripts_dir = PROJECT_DIR / "audiobook" / "scripts"
     scripts = []
 
     if scripts_dir.exists():
@@ -771,11 +864,11 @@ def api_export_audiobook():
 @app.get("/api/export/manual_pdf")
 def api_download_manual_pdf():
     """Download compiled Autonovel Studio User Manual PDF."""
-    pdf_path = BASE_DIR / "Autonovel_Studio_User_Manual.pdf"
+    pdf_path = PROJECT_DIR / "Autonovel_Studio_User_Manual.pdf"
     if not pdf_path.exists():
         try:
             import subprocess
-            subprocess.run([sys.executable, str(BASE_DIR / "generate_manual_pdf.py")], check=False)
+            subprocess.run([sys.executable, str(PROJECT_DIR / "generate_manual_pdf.py")], check=False)
         except Exception:
             pass
     if not pdf_path.exists():
@@ -809,11 +902,27 @@ async def run_command_stream(cmd: str):
     })
 
     try:
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
+        
+        # cmd might be 'gen_world.py' or 'evaluate.py --full'. We need to make the script path absolute.
+        # It assumes the first word is the python script if it ends in .py
+        cmd_parts = cmd.split(" ", 1)
+        script_name = cmd_parts[0]
+        args = cmd_parts[1] if len(cmd_parts) > 1 else ""
+        script_dir = Path(__file__).resolve().parent
+        absolute_script = script_dir / script_name
+        
+        full_cmd = f'"{sys.executable}" -u "{absolute_script}" {args}'
+
         process = await asyncio.create_subprocess_shell(
-            f'"{sys.executable}" {cmd}',
+            full_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
-            cwd=str(BASE_DIR),
+            cwd=str(PROJECT_DIR),
+            env=env,
         )
         job_state.current_process = process
 
@@ -1001,12 +1110,168 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception:
         manager.disconnect(websocket)
 
+# ============================================================================
+# Project Management
+# ============================================================================
+
+import shutil
+
+
+def get_project_metadata(p_dir):
+    import json
+    meta = {
+        "phase": "foundation",
+        "chapters_drafted": 0,
+        "chapters_total": 24,
+        "language": "ar",
+        "word_count": 0,
+        "last_modified": 0,
+    }
+    state_file = p_dir / "state.json"
+    if state_file.exists():
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            meta["phase"] = state.get("phase", "foundation")
+            meta["chapters_drafted"] = state.get("chapters_drafted", 0)
+            meta["chapters_total"] = state.get("chapters_total", 24)
+            meta["last_modified"] = state_file.stat().st_mtime
+        except Exception: pass
+    
+    settings_file = p_dir / "settings.json"
+    if settings_file.exists():
+        try:
+            settings = json.loads(settings_file.read_text(encoding="utf-8"))
+            meta["language"] = settings.get("AUTONOVEL_LANGUAGE", "ar")
+        except Exception: pass
+
+    ch_dir = p_dir / "chapters"
+    if ch_dir.exists():
+        for f in ch_dir.glob("ch_*.md"):
+            try:
+                meta["word_count"] += len(f.read_text(encoding="utf-8").split())
+                meta["last_modified"] = max(meta["last_modified"], f.stat().st_mtime)
+            except Exception: pass
+            
+    return meta
+
+@app.get("/api/projects")
+def api_list_projects():
+    projects_dir = SCRIPT_DIR / "projects"
+    projects_dir.mkdir(exist_ok=True)
+    projects = []
+    
+    root_meta = get_project_metadata(SCRIPT_DIR)
+    projects.append({
+        "id": "root",
+        "name": "Legacy Root Project",
+        "path": str(SCRIPT_DIR),
+        "is_active": str(PROJECT_DIR) == str(SCRIPT_DIR),
+        **root_meta
+    })
+
+    for p in projects_dir.iterdir():
+        if p.is_dir():
+            p_meta = get_project_metadata(p)
+            projects.append({
+                "id": p.name,
+                "name": p.name,
+                "path": str(p),
+                "is_active": str(PROJECT_DIR) == str(p),
+                **p_meta
+            })
+    return {"projects": projects, "active_project": str(PROJECT_DIR)}
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+
+@app.post("/api/projects")
+def api_create_project(req: CreateProjectRequest):
+    projects_dir = SCRIPT_DIR / "projects"
+    projects_dir.mkdir(exist_ok=True)
+    
+    safe_name = re.sub(r'[^\w؀-ۿ\-]', '_', req.name.strip())
+    if not safe_name:
+        raise HTTPException(400, "Invalid project name")
+        
+    p_dir = projects_dir / safe_name
+    if p_dir.exists():
+        raise HTTPException(400, "Project already exists")
+        
+    p_dir.mkdir()
+    
+    # Initialize basic files
+    (p_dir / "seed.txt").write_text("", encoding="utf-8")
+    default_state = {
+        "phase": "foundation", "current_focus": "planning", "iteration": 0,
+        "foundation_score": 0.0, "lore_score": 0.0, "chapters_drafted": 0,
+        "chapters_total": 24, "novel_score": 0.0, "revision_cycle": 0, "debts": [],
+        "novel_type": "novel"
+    }
+    (p_dir / "state.json").write_text(json.dumps(default_state, indent=2), encoding="utf-8")
+    
+    try:
+        import subprocess
+        subprocess.run(["git", "init"], cwd=str(p_dir), check=False)
+    except Exception:
+        pass
+    
+    return {"status": "created", "id": safe_name, "path": str(p_dir)}
+
+@app.delete("/api/projects/{project_id}")
+def api_delete_project(project_id: str):
+    if project_id == "root":
+        raise HTTPException(400, "Cannot delete root project")
+    p_dir = SCRIPT_DIR / "projects" / project_id
+    if not p_dir.exists() or not p_dir.is_dir():
+        raise HTTPException(404, "Project not found")
+        
+    if str(PROJECT_DIR) == str(p_dir):
+        # Fallback to root if deleting active project
+        api_set_active_project(SetActiveProjectRequest(id="root"))
+        
+    import shutil
+    shutil.rmtree(p_dir)
+    return {"status": "deleted", "id": project_id}
+
+class SetActiveProjectRequest(BaseModel):
+    id: str
+
+@app.post("/api/projects/set_active")
+def api_set_active_project(req: SetActiveProjectRequest):
+    global PROJECT_DIR
+    global ORCHESTRATOR_LOG_PATH
+    
+    if req.id == "root":
+        new_dir = SCRIPT_DIR
+    else:
+        new_dir = SCRIPT_DIR / "projects" / req.id
+        if not new_dir.exists():
+            raise HTTPException(404, "Project not found")
+            
+    PROJECT_DIR = new_dir.resolve()
+    os.environ["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
+    
+    # Apply settings from the new project to environ
+    settings_file = PROJECT_DIR / "settings.json"
+    if settings_file.exists():
+        try:
+            import json
+            settings = json.loads(settings_file.read_text(encoding="utf-8"))
+            for k, v in settings.items():
+                os.environ[k] = str(v)
+        except Exception:
+            pass
+            
+    ORCHESTRATOR_LOG_PATH = PROJECT_DIR / "autonovel-orchestrator.log"
+    
+    return {"status": "success", "active_project": str(PROJECT_DIR)}
 
 # ============================================================================
 # Static Files & UI Serving
 # ============================================================================
 
-ui_dist = BASE_DIR / "ui" / "dist"
+ui_dist = SCRIPT_DIR / "ui" / "dist"
 if ui_dist.exists():
     app.mount("/assets", StaticFiles(directory=str(ui_dist / "assets")), name="assets")
 

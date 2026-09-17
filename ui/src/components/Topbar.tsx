@@ -64,6 +64,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     temperature: 0.75,
     target_words: 3500,
     language: 'ar',
+    novel_type: 'novel',
     has_gemini_key: true,
     has_anthropic_key: false,
   });
@@ -369,6 +370,19 @@ export const Topbar: React.FC<TopbarProps> = ({
                   <option value="2500">2,500 words (Novella / Rapid)</option>
                   <option value="3500">3,500 words (Standard Epic Chapter)</option>
                   <option value="5000">5,000 words (Dense Literary Novel)</option>
+                </select>
+              </div>
+
+              {/* Novel Type */}
+              <div>
+                <label className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.novel_type') || 'Novel Type'}</label>
+                <select
+                  value={settings.novel_type || 'novel'}
+                  onChange={(e) => setSettings({ ...settings, novel_type: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                >
+                  <option value="novel">Standard Novel (Full-length epic)</option>
+                  <option value="novella">Novella (Short, compressed structure)</option>
                 </select>
               </div>
 

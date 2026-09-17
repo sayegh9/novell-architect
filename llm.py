@@ -11,10 +11,12 @@ import os
 import re
 import sys
 import json
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env", override=True)
 
 # API Keys
@@ -28,73 +30,98 @@ ANTHROPIC_BETA = "context-1m-2025-08-07"
 # When using Anthropic, default to claude-sonnet-4-6 / opus-4-6.
 IS_GEMINI = bool(GEMINI_API_KEY) or not bool(ANTHROPIC_API_KEY)
 
-DEFAULT_WRITER_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-sonnet-4-6"
-DEFAULT_JUDGE_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-sonnet-4-6"
-DEFAULT_REVIEW_MODEL = "gemini-3.7-flash" if IS_GEMINI else "claude-opus-4-6"
+DEFAULT_WRITER_MODEL = "gemini-2.5-flash" if IS_GEMINI else "claude-sonnet-4-6"
+DEFAULT_JUDGE_MODEL = "gemini-2.5-flash" if IS_GEMINI else "claude-sonnet-4-6"
+DEFAULT_REVIEW_MODEL = "gemini-2.5-flash" if IS_GEMINI else "claude-opus-4-6"
+
 
 WRITER_MODEL = os.environ.get("AUTONOVEL_WRITER_MODEL", DEFAULT_WRITER_MODEL)
 JUDGE_MODEL = os.environ.get("AUTONOVEL_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
 REVIEW_MODEL = os.environ.get("AUTONOVEL_REVIEW_MODEL", DEFAULT_REVIEW_MODEL)
 
 
+_genai_configured = False
+
 def _call_gemini(
     prompt: str,
     system: str = "",
-    model: str = "gemini-3.7-flash",
+    model: str = "gemini-2.5-flash",
     max_tokens: int = 8000,
     temperature: float = 0.7,
-    timeout: int = 600,
+    timeout: int = 300,
 ) -> str:
-
-    """Call Google Gemini API using google-genai SDK or REST fallback."""
+    """Call Google Gemini API using header-authenticated HTTPS request (x-goog-api-key)."""
     if not GEMINI_API_KEY:
         print("ERROR: GEMINI_API_KEY not set in .env", file=sys.stderr)
         sys.exit(1)
 
-    try:
-        from google import genai
-        from google.genai import types
+    m_name = model or "gemini-2.5-flash"
+    if "/" in m_name:
+        m_name = m_name.split("/")[-1]
+    if "claude" in m_name.lower():
+        m_name = "gemini-2.5-flash"
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        config = types.GenerateContentConfig(
-            system_instruction=system if system else None,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=config,
-        )
-        if response.text is not None:
-            return response.text
-        # Fallback if text is empty or filtered
-        if response.candidates and response.candidates[0].content:
-            parts = response.candidates[0].content.parts
-            return "".join(p.text for p in parts if hasattr(p, "text") and p.text)
-        return ""
-    except Exception as e:
-        # Fallback to direct HTTP request using httpx
-        import httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+
+    max_retries = 3
+    last_error = None
+
+    import httpx
+
+    for attempt in range(1, max_retries + 1):
+        target_model = m_name if attempt < max_retries else "gemini-2.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent"
+        
+        headers = {
+            "x-goog-api-key": GEMINI_API_KEY,
+            "Content-Type": "application/json",
+        }
+
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": temperature,
                 "maxOutputTokens": max_tokens,
             },
+            "safetySettings": safety_settings,
         }
         if system:
             payload["systemInstruction"] = {"parts": [{"text": system}]}
 
-        resp = httpx.post(url, json=payload, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        candidates = data.get("candidates", [])
-        if candidates and "content" in candidates[0]:
-            parts = candidates[0]["content"].get("parts", [])
-            return "".join(part.get("text", "") for part in parts)
-        raise RuntimeError(f"Gemini API returned unexpected response: {data}")
+        try:
+            with httpx.Client(timeout=timeout or 120) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates and "content" in candidates[0]:
+                        parts = candidates[0]["content"].get("parts", [])
+                        text = "".join(part.get("text", "") for part in parts if "text" in part)
+                        if text.strip():
+                            return text.strip()
+                    last_error = f"Empty candidate content in response from model {target_model}"
+                else:
+                    last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
+        except Exception as e:
+            last_error = str(e)
+
+        if attempt < max_retries:
+            wait_time = 3 * attempt
+            print(f"  [API Retry] Gemini call attempt {attempt}/{max_retries} failed ({last_error}). Retrying in {wait_time}s...", file=sys.stderr, flush=True)
+            time.sleep(wait_time)
+
+    raise RuntimeError(f"Gemini API failed after {max_retries} attempts: {last_error}")
+
+
+
+
+
+
 
 
 def _call_anthropic(
@@ -151,7 +178,8 @@ def call_llm(
         target_model = model or WRITER_MODEL
         # Normalize if user had Claude model name in env
         if "claude" in target_model.lower():
-            target_model = "gemini-2.5-pro"
+            target_model = "gemini-2.5-flash"
+
         return _call_gemini(
             prompt=prompt,
             system=system,
@@ -177,7 +205,8 @@ def call_llm(
         sys.exit(1)
 
 
-def call_writer(prompt: str, system: str = "", max_tokens: int = 16000, temperature: float = 0.8, timeout: int = 600) -> str:
+def call_writer(prompt: str, system: str = "", max_tokens: int = 8000, temperature: float = 0.8, timeout: int = 600) -> str:
+
     """Call the Writer model (e.g. for drafting, worldbuilding, characters, outline)."""
     return call_llm(
         prompt=prompt,

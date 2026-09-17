@@ -1,0 +1,31 @@
+Draft the next segment of Chapter {chapter_num}.
+
+SEED CONCEPT:
+{seed}
+
+WORLD BIBLE:
+{world}
+
+CHARACTER REGISTRY:
+{characters}
+
+VOICE GUARDRAILS:
+{voice}
+
+FULL CHAPTER OUTLINE (Context):
+{chapter_outline}
+
+=========================================
+PREVIOUSLY WRITTEN SCENES IN THIS CHAPTER:
+{previous_scenes_text}
+
+YOUR TASK:
+Write the next scene/segment focusing STRICTLY on the following beats:
+{current_beats}
+
+WRITING INSTRUCTIONS:
+1. Continue seamlessly from the previously written text (if any). Do not repeat what was already written.
+2. Target ~800-1000 words for this specific segment. Give the beats room to breathe.
+3. Use deep sensory detail, grounded dialogue, and rich prose.
+4. Do NOT rush to the end of the chapter. ONLY write the beats assigned to you in this segment.
+5. Output ONLY the prose. No headers like "Scene 1" or conversational text.

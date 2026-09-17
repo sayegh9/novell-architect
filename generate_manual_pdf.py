@@ -8,7 +8,7 @@ import sys
 import subprocess
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 OUTPUT_HTML = BASE_DIR / "manual.html"
 OUTPUT_PDF = BASE_DIR / "Autonovel_Studio_User_Manual.pdf"
 

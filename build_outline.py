@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_judge
@@ -40,13 +40,19 @@ def call_model(prompt, max_tokens=1500):
 
 def main():
     # Load supporting docs for context
-    characters = (BASE_DIR / "characters.md").read_text()[:3000]
+    char_file = BASE_DIR / "characters.md"
+    characters = char_file.read_text(encoding="utf-8")[:3000] if char_file.exists() else ""
     
     entries = []
+    chapter_files = sorted(CHAPTERS_DIR.glob("ch_*.md"))
+    if not chapter_files:
+        print("No chapter files found in chapters/.", file=sys.stderr)
+        return
     
-    for ch in range(1, 20):
-        path = CHAPTERS_DIR / f"ch_{ch:02d}.md"
-        text = path.read_text()
+    for path in chapter_files:
+        match = re.search(r"ch_(\d+)", path.name)
+        ch = int(match.group(1)) if match else 1
+        text = path.read_text(encoding="utf-8")
         wc = len(text.split())
         
         title_line = text.strip().split('\n')[0].lstrip('# ').strip()
@@ -55,7 +61,7 @@ def main():
 
 CHAPTER {ch}: "{title_line}" ({wc} words)
 
-{text}
+{text[:4000]}
 
 Return JSON with these fields:
 - "title": the chapter title (string)
@@ -71,24 +77,32 @@ Return JSON with these fields:
 
 JSON only, no other text."""
 
-        data = call_model(prompt)
-        data["num"] = ch
-        data["words"] = wc
-        entries.append(data)
-        print(f"  {ch:2d}. {title_line} ({wc}w)")
+        try:
+            data = call_model(prompt)
+            data["num"] = ch
+            data["words"] = wc
+            entries.append(data)
+            print(f"  {ch:2d}. {title_line} ({wc}w)")
+        except Exception as e:
+            print(f"  {ch:2d}. Failed outline extraction: {e}", file=sys.stderr)
     
     # Load existing outline header info
-    old_outline = (BASE_DIR / "outline.md").read_text()
+    outline_file = BASE_DIR / "outline.md"
+    old_outline = outline_file.read_text(encoding="utf-8") if outline_file.exists() else ""
+    title = "Novel Manuscript"
+    if old_outline:
+        title = old_outline.split("\n")[0].lstrip("# ").strip() or title
     
     # Build new outline
     lines = []
-    lines.append("# THE SECOND SON OF THE HOUSE OF BELLS")
+    lines.append(f"# {title}")
     lines.append("## Chapter Outline (reflects actual novel as-written)")
     lines.append("")
-    lines.append(f"**23 chapters, {sum(e['words'] for e in entries):,} words**")
+    lines.append(f"**{len(entries)} chapters, {sum(e['words'] for e in entries):,} words**")
     lines.append("")
     lines.append("---")
     lines.append("")
+
     
     for e in entries:
         lines.append(f"### Ch {e['num']}: {e['title']}")
@@ -149,11 +163,15 @@ JSON only, no other text."""
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("*Outline rebuilt from actual chapters, Cycle 5.*")
+    lines.append("*Outline rebuilt from actual chapters.*")
     
     out = '\n'.join(lines)
-    (BASE_DIR / "outline.md").write_text(out)
-    print(f"\nSaved outline.md ({len(out.split())} words)")
+    (BASE_DIR / "as_written_outline.md").write_text(out, encoding="utf-8")
+    print(f"\nSaved as_written_outline.md ({len(out.split())} words)")
+    if len(entries) >= 20:
+        (BASE_DIR / "outline.md").write_text(out, encoding="utf-8")
+        print(f"Updated outline.md with full as-written manuscript structure.")
 
 if __name__ == "__main__":
     main()
+

@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_writer as _call_writer
@@ -59,62 +59,20 @@ def main():
     old_path = CHAPTERS_DIR / f"ch_{ch_num:02d}.md"
     old_text = old_path.read_text(encoding="utf-8") if old_path.exists() else "(no existing draft)"
 
+    system_prompt = load_prompt("writer_system")
+    prompt_template = load_prompt("revision_prompt")
+    prompt = prompt_template.format(
+        ch_num=ch_num,
+        brief_content=brief_content,
+        old_text=old_text,
+        world=world,
+        characters=characters,
+        voice=voice,
+        prev_tail=prev_tail
+    )
+
     lang = detect_project_language()
     is_arabic = (lang == "ar")
-
-    if is_arabic:
-        system_prompt = get_arabic_writer_system_prompt()
-        prompt = f"""أنت بصدد إعادة كتابة وتنقيح الفصل رقم {ch_num} تنقيحاً أدبياً شاملاً وفق مذكرة المراجعة والتحرير.
-
-مذكرة التحرير والتنقيح (REVISION BRIEF - التزم بها بدقة):
-{brief_content}
-
-المسودة الحالية للفصل (النسخة السابقة):
-{old_text}
-
-دليل العالم (WORLD BIBLE):
-{world}
-
-سجل الشخصيات (CHARACTERS):
-{characters}
-
-محددات الصوت الأدبي (VOICE):
-{voice}
-
-نهاية الفصل السابق (لضمان ترابط التدفق السردي):
-{prev_tail}
-
-تعليمات إعادة الكتابة:
-1. نفّذ التوجيهات المذكورة في مذكرة التحرير كاملة (حذف الحشو، ضبط الإيقاع، وتعميق الصراع الداخلي).
-2. حافظ على الصوت الأدبي الفصيح، والسبك المتين، وتجنب الكليشيهات المترجمة.
-3. اكتب الفصل المنقح كاملاً باللغة العربية الفصحى من البداية حتى النهاية.
-
-اكتب الفصل {ch_num} المنقح كاملاً الآن:
-"""
-    else:
-        system_prompt = get_english_writer_system_prompt()
-        prompt = f"""Rewrite and revise Chapter {ch_num} based on this editorial revision brief.
-
-REVISION BRIEF (follow this exactly):
-{brief_content}
-
-CURRENT DRAFT (previous version):
-{old_text}
-
-VOICE DEFINITION:
-{voice}
-
-CHARACTER REGISTRY:
-{characters}
-
-WORLD BIBLE:
-{world}
-
-PREVIOUS CHAPTER ENDING (maintain continuity):
-{prev_tail}
-
-Write the full revised chapter now.
-"""
 
     print(f"Calling writer model for Chapter {ch_num} revision (Language: {'Arabic' if is_arabic else 'English'})...", flush=True)
     revised_text = call_writer(prompt, system_prompt=system_prompt)

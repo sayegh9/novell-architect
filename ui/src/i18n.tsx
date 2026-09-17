@@ -104,6 +104,15 @@ const translations: Record<Language, Record<string, string>> = {
     'drafting.no_chapter': 'Select a chapter to read or edit its prose draft.',
     'drafting.ai_slop': 'AI Slop & Anti-Pattern Analysis',
     'drafting.save_prose': 'Save Prose Changes',
+    'drafting.edit_beats': 'Edit Beats',
+    'drafting.save_beats': 'Save Beats',
+    'drafting.cancel_beats': 'Cancel',
+    'drafting.beats_saved': 'Beats saved & outline synchronized!',
+    'drafting.btn_redraft_beats': 'Re-Draft from Beats',
+    'drafting.btn_revise_beats': 'Revise with Beats',
+    'drafting.btn_redraft_title': 'Fresh autonomous draft strictly from beats (clean slate)',
+    'drafting.btn_revise_title': 'Revise existing prose to integrate updated beats',
+    'drafting.downstream_notice': 'Notice: Modifying this chapter may impact downstream continuity in chapters',
 
     // Editorial Lab
     'editorial.title': 'Editorial & Revision Lab',
@@ -247,6 +256,15 @@ const translations: Record<Language, Record<string, string>> = {
     'drafting.no_chapter': 'اختر فصلاً من القائمة لقراءة نصه أو تعديله.',
     'drafting.ai_slop': 'تحليل الجودة ومؤشرات التكرار الآلي',
     'drafting.save_prose': 'حفظ التعديلات السردية',
+    'drafting.edit_beats': 'تعديل النبضات',
+    'drafting.save_beats': 'حفظ النبضات',
+    'drafting.cancel_beats': 'إلغاء',
+    'drafting.beats_saved': 'تم حفظ النبضات وتحديث المخطط بنجاح!',
+    'drafting.btn_redraft_beats': 'مسودة جديدة بالنبضات',
+    'drafting.btn_revise_beats': 'تنقيح المسودة بالنبضات',
+    'drafting.btn_redraft_title': 'كتابة مسودة جديدة بالكامل بناءً على النبضات دون الاعتماد على النص السابق',
+    'drafting.btn_revise_title': 'إعادة صياغة وتنقيح المسودة الحالية لإدماج النبضات الجديدة مع الحفاظ على جماليات السرد',
+    'drafting.downstream_notice': 'تنبيه: تعديل هذا الفصل قد يؤثر على تسلسل الأحداث في الفصول اللاحقة',
 
     // Editorial Lab
     'editorial.title': 'مختبر التحرير والمراجعة النقدية',

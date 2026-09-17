@@ -11,13 +11,14 @@ Usage:
 The panoramic art should be wider than tall (4:3 or wider).
 RIGHT side = front cover, CENTER = spine, LEFT side = back cover.
 """
+import os
 import argparse
 import io
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 ART_DIR = BASE_DIR / "art"
 
 # Standard trade paperback dimensions

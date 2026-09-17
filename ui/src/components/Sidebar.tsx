@@ -18,6 +18,8 @@ interface SidebarProps {
   onSelectTab: (tab: string) => void;
   isJobRunning: boolean;
   activePhase: string;
+  onOpenLibrary: () => void;
+  projectName?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +27,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   isJobRunning,
   activePhase,
+  onOpenLibrary,
+  projectName,
 }) => {
   const { t, lang, isRTL } = useI18n();
   const { isDark } = useTheme();
@@ -60,6 +64,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation List */}
         <nav className="p-3 space-y-1">
+          <button
+            onClick={onOpenLibrary}
+            className="w-full mb-2 flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <BookOpen className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'مكتبة المشاريع' : 'My Library'}</span>
+            </div>
+            <ChevronRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="mb-4 px-3.5">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-0.5">
+              {lang === 'ar' ? 'المشروع الحالي' : 'Active Book'}
+            </p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate" title={projectName}>
+              {projectName || '---'}
+            </p>
+          </div>
+
           <div className="px-3 py-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
             {lang === 'ar' ? 'مراحل الإنتاج الروائي' : 'Writing Pipeline'}
           </div>

@@ -1,20 +1,20 @@
 [
   {
-    "direction": "figurative",
-    "concept": "A solemn, blindfolded monarch sits on a throne of unadorned limestone, their head tilted as if listening for a distant sound, with a single piece of intricate brass and obsidian regalia on their chest.",
-    "medium": "Digital Oil Painting",
-    "prompt": "A regal portrait of a solemn monarch, face obscured by a simple limestone white blindfold, sitting on a stark, uncarved throne. Their robes are deep obsidian and twilight indigo, and dramatic chiaroscuro lighting from above catches the intricate details of a single piece of burnished gold and aged brass regalia on their chest. The style is a lyrical dark fantasy digital oil painting, evoking the atmospheric depth and solemnity of Gustave Dor\u00e9 with the intricate detail of Franklin Booth."
+    "direction": "atmospheric",
+    "concept": "A grand tiered limestone citadel surrounded by mystical acoustic mist at twilight",
+    "medium": "Rich chiaroscuro oil painting with textured brushstrokes",
+    "prompt": "An epic dark fantasy book cover illustration of a grand tiered stone citadel built inside a natural mountain amphitheater, twilight sky, deep indigo and warm gold illumination, atmospheric mist, highly detailed masterpiece, 8k resolution, trending on ArtStation"
   },
   {
     "direction": "symbolic",
-    "concept": "An intricate cross-section of a colossal brass bell clapper, revealing impossible internal clockwork mechanisms rendered in the style of a medieval scientific engraving.",
-    "medium": "Engraving / Woodcut",
-    "prompt": "A highly detailed, scientific illustration of a colossal bell clapper, rendered in the style of a medieval woodcut. The image is a cross-section, revealing impossibly complex and anachronistic clockwork gears and filigree made of aged brass, set against a deep obsidian background. Execute this in the intricate pen-and-ink line art style of Franklin Booth, using only deep black ink on a limestone white canvas to create extreme chiaroscuro and a solemn, mysterious mood."
+    "concept": "An ancient ornate bronze bell casting intricate shadows across geometric blueprints",
+    "medium": "Intricate woodcut engraving with gold leaf foil accents",
+    "prompt": "A close-up symbolic fantasy illustration of a massive ancient bronze chime inscribed with luminous harmonic runes, sitting on a weathered wooden craftsman bench with metal filings and calipers, dramatic chiaroscuro lighting, vintage botanical and mechanical engraving style"
   },
   {
-    "direction": "atmospheric",
-    "concept": "A vast, silent landscape of petrified soundwaves, where colossal concentric rings of limestone ripple outwards from a central point across a dark, still valley.",
-    "medium": "Ink Wash / Sumi-e",
-    "prompt": "A vast and melancholic dark fantasy landscape depicted in a minimalist ink wash style, dominated by twilight indigo and deep obsidian tones. The ground is formed from colossal, petrified soundwaves\u2014concentric rings of pale limestone that ripple outwards for miles, creating an eerie, silent topography under a starless sky. The composition should feel immense and solemn, with rich atmospheric depth and a strong sense of chiaroscuro reminiscent of Gustave Dor\u00e9's grand vistas, accented by a single glint of burnished gold on the horizon."
+    "direction": "figurative",
+    "concept": "A solitary craftsman standing in a sunlit limestone workshop overlooking the valley",
+    "medium": "Digital concept art with cinematic volumetric lighting",
+    "prompt": "A solitary apprentice standing in a vast sunlit workshop overlooking a tiered fantasy city, holding a glowing tuning key, dust motes in the sunbeams, cinematic composition, painterly realism, warm amber and limestone palette, high fantasy book cover"
   }
 ]

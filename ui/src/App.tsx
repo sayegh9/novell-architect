@@ -14,6 +14,7 @@ import { ThemeProvider, useTheme } from './theme';
 import { I18nProvider, useI18n } from './i18n';
 import { fetchState } from './services/api';
 import { ProjectInfo } from './types';
+import { LibraryModal } from './components/LibraryModal';
 
 function StudioContent() {
   const [currentTab, setCurrentTab] = useState<string>('seed');
@@ -24,6 +25,7 @@ function StudioContent() {
   const [showRunModal, setShowRunModal] = useState<boolean>(false);
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [showLibraryModal, setShowLibraryModal] = useState<boolean>(false);
 
   const { isRTL } = useI18n();
   const { isDark } = useTheme();
@@ -63,6 +65,8 @@ function StudioContent() {
         onSelectTab={setCurrentTab}
         isJobRunning={info?.is_job_running || false}
         activePhase={info?.state.phase || 'foundation'}
+        onOpenLibrary={() => setShowLibraryModal(true)}
+        projectName={info?.project_name}
       />
 
       {/* Main Content Area */}
@@ -98,6 +102,15 @@ function StudioContent() {
         onOpenRunModal={() => setShowRunModal(true)}
         onOpenResetModal={() => setShowResetModal(true)}
         onOpenSettingsModal={() => setShowSettingsModal(true)}
+      />
+
+      <LibraryModal 
+        isOpen={showLibraryModal} 
+        onClose={() => setShowLibraryModal(false)}
+        onProjectChanged={() => {
+          loadData();
+          setCurrentTab('seed');
+        }}
       />
     </div>
   );

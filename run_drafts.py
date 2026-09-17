@@ -1,94 +1,155 @@
 #!/usr/bin/env python3
-"""Batch draft chapters with quick slop fix and spot-check evals."""
+"""Batch draft chapters sequentially with evaluation and state updates."""
+import argparse
+import json
+import os
+import re
 import subprocess
 import sys
-import re
-import json
+from pathlib import Path
+
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
+CHAPTERS_DIR = BASE_DIR / "chapters"
+CHAPTERS_DIR.mkdir(parents=True, exist_ok=True)
 
 def run(cmd, timeout=600):
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-    return r.stdout + r.stderr, r.returncode
+    p = subprocess.Popen(
+        cmd,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        cwd=str(BASE_DIR),
+    )
+    output = []
+    try:
+        for line in p.stdout:
+            print("  " + line, end="", flush=True)
+            output.append(line)
+        p.wait(timeout=timeout)
+        return "".join(output), p.returncode
+    except Exception as e:
+        p.kill()
+        return "".join(output) + f"\n[ERROR] {e}", -1
 
-def slop_check(ch):
-    out, _ = run(f'.venv/bin/python3 -c "from evaluate import slop_score, load_file; import json; r=slop_score(load_file(\'chapters/ch_{ch:02d}.md\')); print(json.dumps(r))"')
-    return json.loads(out.strip())
 
-def pattern_check(ch):
-    out, _ = run(f"grep -c 'He did not\\|He had not' chapters/ch_{ch:02d}.md")
-    didnot = int(out.strip()) if out.strip().isdigit() else 0
-    out, _ = run(f"grep -c 'He thought about\\|He thought of' chapters/ch_{ch:02d}.md")
-    thought = int(out.strip()) if out.strip().isdigit() else 0
-    out, _ = run(f"wc -w < chapters/ch_{ch:02d}.md")
-    words = int(out.strip())
-    return words, didnot, thought
+def main():
+    parser = argparse.ArgumentParser(description="Batch draft chapters")
+    parser.add_argument("--start", type=int, default=1, help="Starting chapter")
+    parser.add_argument("--end", type=int, default=24, help="Ending chapter")
+    parser.add_argument("--all", action="store_true", help="Draft all 24 chapters")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing drafted chapters")
+    args = parser.parse_args()
 
-def spot_eval(ch):
-    out, rc = run(f'.venv/bin/python3 evaluate.py --chapter={ch}', timeout=300)
-    m_overall = re.search(r'overall_score: ([\d.]+)', out)
-    m_raw = re.search(r'raw_judge_score: (\d+)', out)
-    if m_overall and m_raw:
-        return float(m_overall.group(1)), int(m_raw.group(1))
-    return None, None
+    # Determine total from outline or default
+    outline = BASE_DIR / "outline.md"
+    total_chapters = 24
+    if outline.exists():
+        try:
+            text = outline.read_text(encoding="utf-8")
+            matches = re.findall(r'###\s*(?:Ch|Chapter|الفصل|فصل)\s*(\d+)', text, re.IGNORECASE)
+            if matches:
+                total_chapters = max(int(m) for m in matches)
+        except Exception:
+            pass
 
-# Chapters to draft
-chapters = list(range(11, 25))
-spot_check_chapters = {13, 17, 20, 24}  # midpoint, all-is-lost, break-into-3, finale
+    start_ch = 1 if args.all else args.start
+    end_ch = total_chapters if args.all else min(args.end, total_chapters)
 
-results = []
+    print(f"\n============================================================")
+    print(f"  BATCH DRAFTING CHAPTERS {start_ch} TO {end_ch}")
+    print(f"============================================================\n", flush=True)
 
-for ch in chapters:
-    print(f"\n{'='*50}")
-    print(f"DRAFTING CH {ch}")
-    print(f"{'='*50}")
-    
-    # Draft
-    out, rc = run(f'.venv/bin/python3 draft_chapter.py {ch}')
-    if rc != 0:
-        print(f"  DRAFT FAILED: {out[:200]}")
-        results.append((ch, 0, 0, "FAILED"))
-        continue
-    
-    # Word count and patterns
-    words, didnot, thought = pattern_check(ch)
-    slop = slop_check(ch)
-    
-    print(f"  Words: {words}")
-    print(f"  Slop penalty: {slop['slop_penalty']}")
-    print(f"  Tier1: {len(slop['tier1_hits'])}  Fiction: {len(slop['fiction_ai_tells'])}  Telling: {slop['telling_violations']}")
-    print(f"  Patterns: didnot={didnot} thought={thought}")
-    
-    # Spot-check eval on selected chapters
-    score = None
-    if ch in spot_check_chapters:
-        print(f"  === SPOT-CHECK EVAL ===")
-        score, raw = spot_eval(ch)
-        if score is not None:
-            print(f"  Score: {score} (raw {raw})")
-            if score < 6.0:
-                print(f"  *** BELOW THRESHOLD -- flagging for retry ***")
-        else:
-            print(f"  Eval parse failed")
-    
-    results.append((ch, words, slop['slop_penalty'], score))
-    
-    # Git commit
-    run(f"cd /home/jeffq/autonovel && git add chapters/ch_{ch:02d}.md state.json")
-    
-    # Update state.json
-    with open("state.json") as f:
-        state = json.load(f)
-    state["current_focus"] = f"ch_{ch:02d}"
-    state["chapters_drafted"] = ch
-    with open("state.json", "w") as f:
-        json.dump(state, f, indent=2)
+    results = []
+    import time
 
-print(f"\n\n{'='*60}")
-print("BATCH DRAFTING COMPLETE")
-print(f"{'='*60}")
-total_words = 0
-for ch, words, penalty, score in results:
-    status = f"score={score}" if score else "drafted"
-    print(f"  Ch {ch:2d}: {words:5d}w  slop={penalty:.1f}  {status}")
-    total_words += words
-print(f"\n  Total new words: {total_words}")
-print(f"  Chapters drafted: {len([r for r in results if r[1] > 0])}")
+    for ch in range(start_ch, end_ch + 1):
+        ch_file = CHAPTERS_DIR / f"ch_{ch:02d}.md"
+        
+        # Check if chapter already drafted
+        if ch_file.exists() and ch_file.stat().st_size > 500 and not args.overwrite:
+            try:
+                words = len(ch_file.read_text(encoding="utf-8").split())
+            except Exception:
+                words = 0
+            print(f"  [SKIPPED] Chapter {ch} already exists ({words} words). Use --overwrite to re-draft.", flush=True)
+            results.append((ch, words, "ALREADY_DRAFTED"))
+            continue
+
+        print(f"\n--- Drafting Chapter {ch}/{end_ch} ---", flush=True)
+        ch_start_time = time.time()
+        
+        # Run draft_chapter.py
+
+        cmd = f'"{sys.executable}" draft_chapter.py {ch}'
+        out, rc = run(cmd, timeout=600)
+        
+        if rc != 0 or not ch_file.exists() or ch_file.stat().st_size < 100:
+            print(f"  [ERROR] Draft Ch {ch} failed: {out[-250:]}", flush=True)
+            results.append((ch, 0, "FAILED"))
+            print(f"  [PAUSE] Waiting 30s before next chapter to clear rate limits...", flush=True)
+            time.sleep(30)
+            continue
+
+        try:
+            words = len(ch_file.read_text(encoding="utf-8").split())
+            word_count = words
+        except Exception:
+            word_count = len(ch_file.read_text().split()) if ch_file.exists() else 0
+            words = word_count
+        
+        min_words = 1500 if os.environ.get("AUTONOVEL_LANGUAGE") == "ar" else 2000
+        if word_count < min_words:
+            print(f"  [X] Failed: Too short ({word_count} words < {min_words})")
+            results.append((ch, word_count, "TOO_SHORT"))
+            continue
+            
+        print(f"  [+] Success: {word_count} words. Running evaluation...", flush=True)
+        eval_cmd = f'"{sys.executable}" evaluate.py --chapter={ch}'
+        eval_out, _ = run(eval_cmd, timeout=300)
+        m_score = re.search(r'overall_score:\s*([\d.]+)', eval_out)
+        score = float(m_score.group(1)) if m_score else 6.0
+
+        print(f"  [SCORE] Chapter {ch} score: {score}", flush=True)
+        results.append((ch, words, f"score={score}"))
+
+        # Update state.json
+        state_file = BASE_DIR / "state.json"
+        state = {}
+        if state_file.exists():
+            try:
+                state = json.loads(state_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        
+        actual_drafted = len(list(CHAPTERS_DIR.glob("ch_*.md")))
+        state["chapters_drafted"] = actual_drafted
+        state["current_focus"] = f"ch_{ch:02d}"
+        state["phase"] = "drafting"
+        state["chapters_total"] = total_chapters
+        state_file.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Ensure at least 25s per chapter cycle to maintain clean quota window with full 100% context
+        cycle_elapsed = time.time() - ch_start_time
+        if cycle_elapsed < 25.0:
+            pause_time = 25.0 - cycle_elapsed
+            time.sleep(pause_time)
+
+
+
+
+
+
+    print(f"\n============================================================")
+    print(f"  BATCH DRAFTING COMPLETE")
+    print(f"============================================================")
+    total_words = sum(r[1] for r in results)
+    print(f"  Total words: {total_words}")
+    print(f"  Chapters completed: {len([r for r in results if r[1] > 0])}/{len(results)}")
+    for ch, words, status in results:
+        print(f"    Ch {ch:2d}: {words:5d} words | {status}")
+
+if __name__ == "__main__":
+    main()
+

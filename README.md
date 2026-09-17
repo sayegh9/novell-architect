@@ -15,6 +15,7 @@ See the `autonovel/bells` branch.
 
 ## Quick Start
 
+### Command Line Interface
 ```bash
 # Clone and setup
 git clone <repo-url> && cd autonovel
@@ -28,6 +29,25 @@ uv run python seed.py
 
 # Run the full pipeline
 uv run python run_pipeline.py --from-scratch
+```
+
+### Autonovel Studio (GUI)
+Autonovel includes a web-based GUI for interactive planning, chapter drafting, and evaluation.
+To start the studio:
+
+**Mac/Linux:**
+Double-click the `run_autonovel.command` script in your finder, or run it from the terminal:
+```bash
+./run_autonovel.command
+```
+This script automatically builds the UI and starts the backend server on `http://localhost:8080`.
+
+**Manual Startup:**
+If you prefer to start it manually, ensure you have the web dependencies installed (which are not included in the core CLI dependencies by default):
+```bash
+uv add fastapi uvicorn pydantic websockets
+cd ui && npm install && npm run build && cd ..
+PORT=8080 uv run python server.py
 ```
 
 ---
@@ -56,6 +76,19 @@ Rebuild docs, typeset in LaTeX, generate art, produce audiobook scripts,
 build ePub, create landing page.
 
 See [PIPELINE.md](PIPELINE.md) for the full technical specification.
+
+---
+
+## Arabic & Multi-Language Support
+
+Autonovel has been fundamentally re-architected to natively support Arabic literary fiction (as well as English), avoiding the common pitfalls of Arabic AI generation.
+
+To write a novel in Arabic, simply set `AUTONOVEL_LANGUAGE=ar` in your `.env` file. The pipeline handles the rest through three architectural pillars:
+
+1. **Segmented Drafting Engine**: Instead of asking the LLM to write a 3,000-word Arabic chapter in a single prompt (which causes severe length collapse and summarization), `draft_chapter.py` parses the outline and uses iterative, beat-by-beat generation. It passes context seamlessly between segments to guarantee rich, expansive prose.
+2. **Semantic Slop Evaluator**: Because Arabic morphology (prefixes and suffixes) breaks rigid regex-based cliché detection, the pipeline uses a Semantic Evaluator. It passes a dynamic list of Arabic clichés (e.g., "ساد صمت", "شعر ببرودة تسري في عروقه") to the Judge LLM, allowing it to natively parse morphology and correctly penalize AI slop.
+3. **Externalized Prompts**: All prompts are located in the `prompts/ar/` and `prompts/en/` directories. No Arabic text is hardcoded in the Python source code, making the pipeline fully customizable and clean.
+4. **Native RTL Export**: Arabic manuscripts are automatically compiled to `manuscript.html` using a custom template that ensures perfect Right-to-Left formatting and Arabic typography, bypassing LaTeX compatibility issues.
 
 ---
 

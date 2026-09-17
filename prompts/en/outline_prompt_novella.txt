@@ -1,0 +1,23 @@
+Build a complete chapter outline for this compressed Novella. Target: 8-12 chapters maximum.
+
+SEED CONCEPT:
+{seed}
+
+THE CENTRAL MYSTERY:
+{mystery}
+
+WORLD BIBLE:
+{world}
+
+CHARACTER REGISTRY:
+{characters}
+
+VOICE:
+{voice}
+
+Structure it as a fast-paced 3-act structure.
+Act 1 (Ch 1-3): Inciting incident and immediate entry into the conflict.
+Act 2 (Ch 4-8): Rising action, revealing the core mystery, midpoint reversal.
+Act 3 (Ch 9-12): The climax and immediate resolution.
+
+Build the complete chapter outline now. Each chapter must have specific beats, POV, setting, and emotional shift.

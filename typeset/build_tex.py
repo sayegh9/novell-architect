@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 CHAPTERS_DIR = BASE_DIR.parent / "chapters"
 OUT_DIR = BASE_DIR
 

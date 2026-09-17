@@ -33,6 +33,7 @@ export interface ProjectInfo {
   chapters: ChapterSummary[];
   total_words: number;
   chapters_count: number;
+  project_name: string;
   is_job_running: boolean;
   current_cmd: string;
   env_keys: {
@@ -106,6 +107,7 @@ export interface EngineSettings {
   temperature: number;
   target_words: number;
   language: string;
+  novel_type: string;
   has_gemini_key: boolean;
   has_anthropic_key: boolean;
 }

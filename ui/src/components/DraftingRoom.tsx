@@ -15,9 +15,19 @@ import {
   Clock, 
   Hash, 
   Sparkles,
-  BookOpen
+  BookOpen,
+  Edit3,
+  X,
+  RefreshCw
 } from 'lucide-react';
-import { fetchChapter, saveChapter, runAction, fetchFileContent } from '../services/api';
+import { 
+  fetchChapter, 
+  saveChapter, 
+  runAction, 
+  fetchFileContent,
+  fetchChapterBeats,
+  saveChapterBeats
+} from '../services/api';
 import { ChapterSummary } from '../types';
 import { useI18n } from '../i18n';
 import { useTheme } from '../theme';
@@ -38,13 +48,22 @@ export const DraftingRoom: React.FC = () => {
   const [showOutlinePanel, setShowOutlinePanel] = useState(true);
   const [outlineContent, setOutlineContent] = useState<string>('');
   
+  // Chapter Beats State & Editing
+  const [beats, setBeats] = useState<string>('');
+  const [isEditingBeats, setIsEditingBeats] = useState<boolean>(false);
+  const [editedBeatsText, setEditedBeatsText] = useState<string>('');
+  const [loadingBeats, setLoadingBeats] = useState<boolean>(false);
+  const [savingBeats, setSavingBeats] = useState<boolean>(false);
+
   // Zen Focus Mode & Typography Preferences
   const [zenMode, setZenMode] = useState(false);
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
   const [targetWords, setTargetWords] = useState(3500);
 
   useEffect(() => {
+    setIsEditingBeats(false);
     loadChapterProse(selectedCh);
+    loadChapterBeatsData(selectedCh);
     loadOutlineDoc();
   }, [selectedCh]);
 
@@ -69,6 +88,60 @@ export const DraftingRoom: React.FC = () => {
     } catch {
       setOutlineContent('');
     }
+  };
+
+  const getChapterBeatsFallback = (chNum: number, docText: string) => {
+    if (!docText) return null;
+    const pattern = new RegExp(
+      `(?:^|\\n)(#+\\s*(?:الفصل|فصل|Chapter|Ch)\\s+${chNum}(?:[:\\s]|$)[\\s\\S]*?)(?=(?:\\n#+\\s*(?:الفصل|فصل|Chapter|Ch)\\s+\\d+(?:[:\\s]|$))|(?:\\n#+\\s*(?:ACT|MIDPOINT|Foreshadowing|الملاحظات|الملحق|خريطة|نبضات|ممنوعات))|\\Z)`,
+      'i'
+    );
+    const match = docText.match(pattern);
+    if (!match) return null;
+    let res = match[1].trim();
+    res = res.replace(/\\n+---+\\s*$/, '').trim();
+    return res;
+  };
+
+  const loadChapterBeatsData = async (chNum: number) => {
+    try {
+      setLoadingBeats(true);
+      const res = await fetchChapterBeats(chNum);
+      if (res && res.exists && res.beats) {
+        setBeats(res.beats);
+        setEditedBeatsText(res.beats);
+      } else {
+        const fallback = getChapterBeatsFallback(chNum, outlineContent);
+        setBeats(fallback || '');
+        setEditedBeatsText(fallback || '');
+      }
+    } catch {
+      const fallback = getChapterBeatsFallback(chNum, outlineContent);
+      setBeats(fallback || '');
+      setEditedBeatsText(fallback || '');
+    } finally {
+      setLoadingBeats(false);
+    }
+  };
+
+  const handleSaveBeats = async () => {
+    try {
+      setSavingBeats(true);
+      await saveChapterBeats(selectedCh, editedBeatsText);
+      setBeats(editedBeatsText);
+      setIsEditingBeats(false);
+      success(t('drafting.beats_saved'));
+      loadOutlineDoc();
+    } catch (e: any) {
+      error(`Save beats failed: ${e.message}`);
+    } finally {
+      setSavingBeats(false);
+    }
+  };
+
+  const handleCancelEditBeats = () => {
+    setEditedBeatsText(beats);
+    setIsEditingBeats(false);
   };
 
   const handleSaveProse = async () => {
@@ -97,6 +170,46 @@ export const DraftingRoom: React.FC = () => {
     }
   };
 
+  const handleRedraftFromBeats = async () => {
+    try {
+      setTriggering(true);
+      await runAction('rewrite_chapter_beats', { chapter: selectedCh, mode: 'fresh' });
+      success(lang === 'ar' 
+        ? `بدأت صياغة مسودة جديدة بالكامل للفصل ${selectedCh} بناءً على النبضات!` 
+        : `Re-drafting Chapter ${selectedCh} strictly from beats! Follow Live Terminal.`);
+    } catch (e: any) {
+      error(`Re-draft failed: ${e.message}`);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleReviseWithBeats = async () => {
+    try {
+      setTriggering(true);
+      await runAction('rewrite_chapter_beats', { chapter: selectedCh, mode: 'revise' });
+      success(lang === 'ar' 
+        ? `بدأ تنقيح مسودة الفصل ${selectedCh} لإدماج النبضات الجديدة!` 
+        : `Revising Chapter ${selectedCh} draft with updated beats! Follow Live Terminal.`);
+    } catch (e: any) {
+      error(`Revision failed: ${e.message}`);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleBatchDraftAll = async () => {
+    try {
+      setTriggering(true);
+      await runAction('run_drafts', { all: true });
+      success(lang === 'ar' ? `بدأ توليد جميع الفصول الـ 24 تلقائياً!` : `Started batch drafting all 24 chapters! Follow live terminal.`);
+    } catch (e: any) {
+      error(`Batch drafting failed: ${e.message}`);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
   const handleScoreAction = async () => {
     try {
       setTriggering(true);
@@ -113,16 +226,6 @@ export const DraftingRoom: React.FC = () => {
   const wordCount = prose.trim() ? prose.trim().split(/\s+/).length : 0;
   const readingTimeMin = Math.max(1, Math.round(wordCount / 225));
   const progressPct = Math.min(100, Math.round((wordCount / targetWords) * 100));
-
-  // Extract beat notes for this chapter from outline.md if found
-  const getChapterBeats = (chNum: number) => {
-    if (!outlineContent) return null;
-    const regex = new RegExp(`(?:##\\s*|###\\s*)(?:Chapter|الفصل)\\s*${chNum}[\\s\\S]*?(?=(?:##\\s*|###\\s*)(?:Chapter|الفصل)|$)`, 'i');
-    const match = outlineContent.match(regex);
-    return match ? match[0] : null;
-  };
-
-  const currentBeats = getChapterBeats(selectedCh);
 
   const fontSizeClasses = {
     sm: 'text-sm leading-relaxed',
@@ -184,21 +287,45 @@ export const DraftingRoom: React.FC = () => {
           <button
             onClick={handleScoreAction}
             disabled={triggering}
-            className="px-3.5 py-2 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+            className="px-3 py-2 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
           >
             <Award className="w-4 h-4 text-amber-500" />
             <span>{t('drafting.btn_score')}</span>
           </button>
 
-          {/* Draft Chapter Button */}
+          {/* Re-Draft from Beats (Fresh) */}
           <button
-            onClick={handleDraftAction}
+            onClick={handleRedraftFromBeats}
             disabled={triggering}
-            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+            title={t('drafting.btn_redraft_title')}
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{t('drafting.btn_draft')} ({selectedCh})</span>
+            <span>{t('drafting.btn_redraft_beats')} ({selectedCh})</span>
           </button>
+
+          {/* Revise with Beats (Guided) */}
+          <button
+            onClick={handleReviseWithBeats}
+            disabled={triggering}
+            className="px-3.5 py-2 rounded-xl bg-amber-500/15 dark:bg-amber-500/25 hover:bg-amber-500/35 text-amber-600 dark:text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+            title={t('drafting.btn_revise_title')}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span>{t('drafting.btn_revise_beats')}</span>
+          </button>
+
+          {/* Batch Draft All Button */}
+          <button
+            onClick={handleBatchDraftAll}
+            disabled={triggering}
+            className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-md shadow-purple-600/20 flex items-center gap-1.5"
+            title="Sequentially generate all 24 chapters autonomously"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{lang === 'ar' ? 'كتابة كل الفصول' : 'Draft All (1-24)'}</span>
+          </button>
+
 
           {/* Save Button */}
           <button
@@ -265,21 +392,86 @@ export const DraftingRoom: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
             {/* Split Beats Reference Panel */}
             {showOutlinePanel && !zenMode && (
-              <div className="lg:col-span-4 bg-slate-50 dark:bg-[#0c0f17] border border-slate-200 dark:border-[#1e2538] rounded-2xl p-5 shadow-lg space-y-3 max-h-[700px] overflow-y-auto">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#1d2334] pb-2.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-500">
-                    <BookOpen className="w-4 h-4" />
-                    <span>{lang === 'ar' ? `نبضات ومخطط الفصل ${selectedCh}` : `Chapter ${selectedCh} Beats`}</span>
+              <div className="lg:col-span-4 bg-slate-50 dark:bg-[#0c0f17] border border-slate-200 dark:border-[#1e2538] rounded-2xl p-5 shadow-lg space-y-3 max-h-[700px] flex flex-col justify-between">
+                <div className="space-y-3 overflow-y-auto pr-1">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#1d2334] pb-2.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-500">
+                      <BookOpen className="w-4 h-4" />
+                      <span>{lang === 'ar' ? `نبضات ومخطط الفصل ${selectedCh}` : `Chapter ${selectedCh} Beats`}</span>
+                    </div>
+
+                    {/* Edit / Save / Cancel Buttons */}
+                    <div className="flex items-center gap-1.5">
+                      {!isEditingBeats ? (
+                        <button
+                          onClick={() => {
+                            setIsEditingBeats(true);
+                            setEditedBeatsText(beats);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#151926] hover:bg-slate-100 dark:hover:bg-[#1f2538] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#20283d] text-[11px] font-medium flex items-center gap-1 transition-all shadow-xs"
+                          title={t('drafting.edit_beats')}
+                        >
+                          <Edit3 className="w-3 h-3 text-amber-500" />
+                          <span>{t('drafting.edit_beats')}</span>
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={handleCancelEditBeats}
+                            disabled={savingBeats}
+                            className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium flex items-center gap-1 transition-all"
+                            title={t('drafting.cancel_beats')}
+                          >
+                            <X className="w-3 h-3" />
+                            <span>{t('drafting.cancel_beats')}</span>
+                          </button>
+                          <button
+                            onClick={handleSaveBeats}
+                            disabled={savingBeats}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1 transition-all shadow-sm"
+                            title={t('drafting.save_beats')}
+                          >
+                            {savingBeats ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            <span>{t('drafting.save_beats')}</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
+
+                  {isEditingBeats ? (
+                    <div className="space-y-2">
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        {lang === 'ar' ? 'قم بتعديل النبضات هنا. سيتم حفظ التعديل مباشرة وتحديث outline.md بأمان.' : 'Edit beats here. Changes will synchronize with outline.md.'}
+                      </div>
+                      <textarea
+                        value={editedBeatsText}
+                        onChange={(e) => setEditedBeatsText(e.target.value)}
+                        rows={16}
+                        className="w-full bg-white dark:bg-[#07090e] border border-amber-500/50 rounded-xl p-3.5 text-xs text-slate-800 dark:text-slate-200 font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all resize-y"
+                        placeholder={`Enter beats for Chapter ${selectedCh}...`}
+                      />
+                    </div>
+                  ) : beats ? (
+                    <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-mono whitespace-pre-wrap select-text">
+                      {beats}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-xs text-slate-400 italic">
+                      {lang === 'ar' ? 'لا توجد نبضات مخصصة لهذا الفصل في outline.md.' : 'No specific beat notes extracted for this chapter.'}
+                    </div>
+                  )}
                 </div>
 
-                {currentBeats ? (
-                  <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
-                    {currentBeats}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-xs text-slate-400 italic">
-                    {lang === 'ar' ? 'لا توجد نبضات مخصصة لهذا الفصل في outline.md.' : 'No specific beat notes extracted for this chapter.'}
+                {/* Downstream continuity hint */}
+                {selectedCh < 24 && (
+                  <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-[#1d2334] text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>
+                      {lang === 'ar' 
+                        ? `${t('drafting.downstream_notice')} (${selectedCh + 1}–24).`
+                        : `${t('drafting.downstream_notice')} (${selectedCh + 1}–24).`}
+                    </span>
                   </div>
                 )}
               </div>

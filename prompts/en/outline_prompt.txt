@@ -1,0 +1,18 @@
+Build a complete chapter outline for this epic novel. Target: 20-24 chapters.
+
+SEED CONCEPT:
+{seed}
+
+THE CENTRAL MYSTERY:
+{mystery}
+
+WORLD BIBLE:
+{world}
+
+CHARACTER REGISTRY:
+{characters}
+
+VOICE:
+{voice}
+
+Build the complete chapter outline now. Each chapter must have specific beats, POV, setting, and emotional shift.

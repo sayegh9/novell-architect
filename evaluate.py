@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 # --- Configuration ---
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 
 # Load .env file if present
 from dotenv import load_dotenv
@@ -161,7 +161,7 @@ def slop_score(text):
     em_dash_density = (em_dashes / word_count) * 1000
 
     # Sentence length variation (coefficient of variation)
-    sentences = re.split(r'[.!?]+', text)
+    sentences = re.split(r'[.!?؟]+', text)
     sentences = [s.strip() for s in sentences if len(s.strip().split()) > 2]
     if len(sentences) > 2:
         lengths = [len(s.split()) for s in sentences]
@@ -233,6 +233,8 @@ def slop_score(text):
     }
 
 
+from language_utils import detect_project_language, load_prompt
+
 def load_file(path):
     """Load a text file, return empty string if missing."""
     try:
@@ -266,15 +268,11 @@ def load_all_chapters():
     return chapters
 
 
-JUDGE_SYSTEM = (
-    "You are a literary critic and novel editor. "
-    "You evaluate fiction with precision. Always respond with valid JSON. "
-    "No markdown fences, no preamble -- just the JSON object."
-)
-
 def call_judge(prompt, max_tokens=2000):
     """Call the judge LLM and return its response text."""
-    return _call_judge(prompt, system=JUDGE_SYSTEM, max_tokens=max_tokens, temperature=0.3, timeout=300)
+    system_prompt = load_prompt("judge_system")
+    return _call_judge(prompt, system=system_prompt, max_tokens=max_tokens, temperature=0.3, timeout=300)
+
 
 
 
@@ -498,151 +496,6 @@ def evaluate_foundation():
 
 # --- Chapter Evaluation ---
 
-CHAPTER_PROMPT = """Evaluate this fantasy novel chapter against the planning docs.
-
-SCORING CALIBRATION:
-  9-10: Among the best chapters you've read in published fantasy. Name
-        a specific published chapter it competes with, or don't give 9+.
-  7-8:  Strong, publishable with editorial polish. Specific flaws exist
-        but don't break the reading experience.
-  5-6:  Functional but flat. A competent draft that needs substantial revision.
-        Generic where it should be specific. Safe where it should risk.
-  3-4:  Significant problems. Voice breaks, beats missed, prose generic.
-  1-2:  Not usable. Rewrite from scratch.
-
-  The MEDIAN score for a competent AI-generated chapter should be 6.
-  A 7 means it does something a generic AI draft wouldn't.
-  An 8 means a human editor would keep it with minor notes.
-  Most dimensions should score 6-7. Reserve 8+ for genuine excellence.
-
-MANDATORY: For each dimension, you must identify:
-  (a) The single WEAKEST MOMENT -- quote the specific sentence or passage
-  (b) What would make it better -- a concrete revision, not a vague note
-  If every sentence is perfect, you're not reading carefully enough.
-
-VOICE DEFINITION:
-{voice}
-
-WORLD BIBLE (summary):
-{world}
-
-CHARACTER REGISTRY:
-{characters}
-
-CANON (established hard facts -- violations are bugs):
-{canon}
-
-CHAPTER OUTLINE ENTRY:
-{chapter_outline}
-
-PREVIOUS CHAPTER (last 1500 words):
-{prev_chapter_tail}
-
-THE CHAPTER TO EVALUATE:
-{chapter_text}
-
-CROSS-CHECKS (perform before scoring):
-1. QUOTE TEST: Find the 3 best sentences and 3 weakest sentences.
-   If you can't find 3 weak ones, lower your standards -- every
-   chapter has weak moments. Look for: generic phrasing where
-   specificity was possible, rhythmic monotony in any paragraph,
-   metaphors that don't come from the character's experience,
-   emotional moments that tell instead of show, transitions that
-   summarize instead of dramatize.
-2. DIALOGUE REALISM: Read all dialogue aloud (mentally). Does it
-   sound like speech or like written prose? Do characters say things
-   a 14-year-old / 60-year-old / etc. would actually say?
-3. SCENE VS SUMMARY: How much of the chapter is in-scene (moment
-   by moment, with dialogue and action) vs summary (narrator
-   compressing time)? Chapters heavy on summary score lower on
-   engagement regardless of prose quality.
-4. AI PATTERN CHECK: Look for these common AI writing patterns:
-   - Every paragraph the same length
-   - Observations always in threes (X, Y, and Z)
-   - Emotional beats that arrive on schedule rather than surprising
-   - Characters who never say the wrong thing or talk past each other
-   - Description that catalogs instead of selecting (listing 5 sensory
-     details when 2 specific ones would be sharper)
-   - Internal monologue explaining what the scene already showed
-5. EARNED VS GIVEN: Is tension earned through scene work or handed to
-   the reader through the narrator's assertions? Is mystery maintained
-   through genuine withholding or through the character conveniently
-   not thinking about things they'd think about?
-
-Score these dimensions:
-
-- voice_adherence: Does the prose match voice.md Part 2? Check: sentence
-  rhythm variation, vocabulary wells, body-before-emotion principle,
-  the specific tone described. Quote the strongest voice moment AND
-  the weakest. Does ANY passage sound like generic fantasy prose that
-  could appear in any novel? If yes, score 7 max.
-
-- beat_coverage: Did it hit every beat from the outline? Were beats
-  dramatized or merely mentioned? A beat that's summarized in a sentence
-  instead of lived in a scene counts as half-hit. Score reflects
-  QUALITY of beat execution, not just presence.
-
-- character_voice: Remove all dialogue tags mentally. Can you tell who's
-  speaking? Do characters ever sound alike? Does dialogue read as speech
-  or as written prose? Does Cass sound like a specific 14-year-old, or
-  like "young protagonist"? Does anyone say something surprising -- not
-  just the right thing, but a REAL thing? Characters who never stumble,
-  hesitate, or say something slightly wrong are AI-pattern characters.
-
-- plants_seeded: Were foreshadowing elements placed naturally? A plant
-  that's obvious is worse than a plant that's invisible. Score based on
-  HOW WELL they're integrated, not just whether they're present.
-
-- prose_quality: Sentence variety (measure: do 3+ consecutive sentences
-  start the same way?). Specificity (concrete nouns > abstract).
-  Metaphors from Cass's experience, not from a thesaurus. Show-don't-tell
-  at emotional peaks. QUOTE the weakest sentence and explain why. Also
-  check for: repeated phrases, leaned-on constructions, paragraphs that
-  could be cut without loss.
-
-- continuity: Does it follow logically from the previous chapter? Emotional
-  continuity as well as plot continuity. Does the character's state of
-  mind track?
-
-- canon_compliance: Check ALL facts against canon. List violations.
-  One major violation caps score at 6. Check: character names, locations,
-  magic system rules, timeline, established events, physical descriptions.
-
-- lore_integration: Does the world do WORK in this chapter, or is it
-  set dressing? A scene that could happen in any fantasy city with
-  find-and-replace on proper nouns scores 5 max.
-
-- engagement: Would a reader turn the page? Where does tension come from --
-  plot, character, mystery, prose? Is there a moment that SURPRISES?
-  Predictable excellence is still predictable. Score 8+ only if the
-  chapter does something unexpected.
-
-Respond with JSON:
-{{
-  "voice_adherence": {{"score": N, "weakest_moment": "quote the specific weak passage", "fix": "how to improve it", "note": "..."}},
-  "beat_coverage": {{"score": N, "weakest_moment": "...", "fix": "...", "note": "..."}},
-  "character_voice": {{"score": N, "weakest_moment": "...", "fix": "...", "note": "..."}},
-  "plants_seeded": {{"score": N, "weakest_moment": "...", "fix": "...", "note": "..."}},
-  "prose_quality": {{"score": N, "weakest_sentence": "quote it", "fix": "rewrite suggestion", "strongest_sentence": "quote it", "note": "..."}},
-  "continuity": {{"score": N, "note": "..."}},
-  "canon_compliance": {{"score": N, "violations": ["list any found"], "note": "..."}},
-  "lore_integration": {{"score": N, "weakest_moment": "...", "fix": "...", "note": "..."}},
-  "engagement": {{"score": N, "weakest_moment": "...", "fix": "...", "note": "..."}},
-  "three_weakest_sentences": ["quote 1", "quote 2", "quote 3"],
-  "three_strongest_sentences": ["quote 1", "quote 2", "quote 3"],
-  "ai_patterns_detected": ["list any AI writing patterns found"],
-  "overall_score": N,
-  "weakest_dimension": "...",
-  "top_3_revisions": ["specific, actionable revision 1", "revision 2", "revision 3"],
-  "new_canon_entries": ["any new facts established in this chapter"]
-}}
-
-FINAL CHECK: If your overall_score is above 7, re-read your weakest_moment
-quotes. If any of them describe a problem that an editor would flag, your
-score is too high. The median AI chapter is a 6. An 8 is exceptional. A 9
-is rare. A 10 does not exist for a first draft.
-"""
-
 
 def evaluate_chapter(chapter_num):
     layers = load_layer_files()
@@ -651,17 +504,18 @@ def evaluate_chapter(chapter_num):
         return {"error": f"Chapter {chapter_num} is empty or missing",
                 "overall_score": 0.0}
 
-    # Extract this chapter's outline entry (rough heuristic)
+    # Extract this chapter's outline entry (supporting English and Arabic)
     outline = layers["outline"]
-    ch_pattern = rf'###\s*Ch\s*{chapter_num}\b.*?(?=###\s*Ch\s*\d|## Act|## Foreshadowing|$)'
-    ch_match = re.search(ch_pattern, outline, re.DOTALL)
-    chapter_outline = ch_match.group(0) if ch_match else "(outline entry not found)"
+    ch_pattern = rf'(?:^|\n)(#+\s*(?:الفصل|فصل|Ch|Chapter)\s+{chapter_num}[:\s].*?)(?=(?:\n#+\s*(?:الفصل|فصل|Ch|Chapter)\s+{chapter_num + 1}[:\s])|(?:\n#+\s*(?:ACT|MIDPOINT|Foreshadowing|الملاحظات|الملحق|خريطة|نبضات|ممنوعات))|\Z)'
+    ch_match = re.search(ch_pattern, outline, re.DOTALL | re.IGNORECASE)
+    chapter_outline = ch_match.group(1).strip() if ch_match else "(outline entry not found)"
 
     # Load previous chapter tail
     prev_text = load_chapter(chapter_num - 1) if chapter_num > 1 else "(first chapter)"
     prev_tail = prev_text[-3000:] if len(prev_text) > 3000 else prev_text
 
-    prompt = CHAPTER_PROMPT.format(
+    prompt_template = load_prompt("evaluate_chapter")
+    prompt = prompt_template.format(
         voice=layers["voice"],
         world=layers["world"][:4000],  # truncate world bible
         characters=layers["characters"],
@@ -673,11 +527,22 @@ def evaluate_chapter(chapter_num):
     raw = call_judge(prompt, max_tokens=8000)
     result = parse_json_response(raw)
 
-    # Mechanical slop check -- adjusts score independently of judge
-    slop = slop_score(chapter_text)
-    result["slop"] = slop
+    lang = detect_project_language()
+    
+    if lang == "ar":
+        # Semantic slop check via LLM output for Arabic
+        result["slop"] = {"slop_penalty": 0.0, "found_cliches": []}
+        if "slop_and_cliches" in result:
+            slop_data = result["slop_and_cliches"]
+            result["slop"]["slop_penalty"] = float(slop_data.get("penalty", 0.0))
+            result["slop"]["found_cliches"] = slop_data.get("found_cliches", [])
+    else:
+        # Mechanical slop check for English
+        slop = slop_score(chapter_text)
+        result["slop"] = slop
+        
     if "overall_score" in result:
-        adjusted = max(0, result["overall_score"] - slop["slop_penalty"])
+        adjusted = max(0, result["overall_score"] - result["slop"]["slop_penalty"])
         result["raw_judge_score"] = result["overall_score"]
         result["overall_score"] = round(adjusted, 2)
 
@@ -775,12 +640,15 @@ def main():
     args = parser.parse_args()
 
     if args.phase == "foundation":
+        print("Evaluating foundation planning documents (world.md, characters.md, outline.md, canon.md, voice.md)...", flush=True)
         result = evaluate_foundation()
         score_key = "overall_score"
     elif args.chapter is not None:
+        print(f"Evaluating Chapter {args.chapter} against planning documents...", flush=True)
         result = evaluate_chapter(args.chapter)
         score_key = "overall_score"
     elif args.full:
+        print("Evaluating full novel holistically...", flush=True)
         result = evaluate_full()
         score_key = "novel_score"
 
@@ -804,6 +672,23 @@ def main():
         json.dump(result, f, indent=2)
     print(f"\neval_log: {log_path}")
 
+    # Synchronize score with state.json if applicable
+    state_file = BASE_DIR / "state.json"
+    if state_file.exists():
+        try:
+            state_data = json.loads(state_file.read_text(encoding="utf-8"))
+            if args.phase == "foundation":
+                if "overall_score" in result:
+                    state_data["foundation_score"] = float(result["overall_score"])
+                if "lore_score" in result:
+                    state_data["lore_score"] = float(result["lore_score"])
+            elif args.full and "novel_score" in result:
+                state_data["novel_score"] = float(result["novel_score"])
+            state_file.write_text(json.dumps(state_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
     main()
+

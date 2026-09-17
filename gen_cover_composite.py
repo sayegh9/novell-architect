@@ -9,12 +9,13 @@ Usage:
   python gen_cover_composite.py art/cover.png --preset dark   # light text on dark art
   python gen_cover_composite.py art/cover.png --preset light  # dark text on light art
 """
+import os
 import argparse
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 
 
 def find_font(name, style="Regular"):

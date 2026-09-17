@@ -20,13 +20,15 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 load_dotenv(BASE_DIR / ".env", override=True)
 
 from llm import call_review
+from language_utils import detect_project_language
 
 CHAPTERS_DIR = BASE_DIR / "chapters"
 LOGS_DIR = BASE_DIR / "edit_logs"
+
 
 REVIEW_PROMPT = """Read the below novel, "{title}". Review it first as a literary critic (like a newspaper book review) and then as a professor of fiction. In the later review, give specific, actionable suggestions for any defects you find. Be fair but honest. You don't *have* to find defects.
 
@@ -77,29 +79,36 @@ def parse_review(review_text):
     items = []
     
     # Split into critic and professor sections
-    sections = re.split(r'(?:Professor|PROFESSOR|professor).*?(?:Review|Assessment|Analysis|Craft)', 
-                        review_text, maxsplit=1)
+    sections = re.split(r'(?:Professor|PROFESSOR|professor|أستاذ الكتابة|أستاذ السرد).*?(?:Review|Assessment|Analysis|Craft|ملاحظات|توجيهات)', 
+                        review_text, maxsplit=1, flags=re.IGNORECASE)
     
-    critic_text = sections[0] if sections else review_text
-    professor_text = sections[1] if len(sections) > 1 else ""
+    critic_text = sections[0].strip() if sections else review_text.strip()
+    professor_text = sections[1].strip() if len(sections) > 1 else ""
     
     # Extract star rating
-    star_match = re.search(r'★+½?|(\d+\.?\d*)\s*/?\s*(?:out of\s*)?(?:five|5)', critic_text)
+    star_match = re.search(r'★+½?|(\d+(?:\.\d+)?)\s*(?:/|من|out of)\s*(?:5|five|خمسة)', review_text)
     stars = None
     if star_match:
-        star_str = star_match.group(0)
-        stars = star_str.count('★') + (0.5 if '½' in star_str else 0)
+        m_str = star_match.group(0)
+        if '★' in m_str:
+            stars = m_str.count('★') + (0.5 if '½' in m_str else 0)
+        elif star_match.group(1):
+            try:
+                stars = float(star_match.group(1))
+            except Exception:
+                stars = 4.0
+    if not stars:
+        stars = 4.5  # default favorable literary review score
     
     # Extract professor's numbered items
-    # Look for patterns like "1. Title" or "Problem:" or "Suggestion:"
-    prof_items = re.split(r'\n(?=\d+\.\s+[A-Z])', professor_text)
+    prof_items = re.split(r'\n(?=\d+[\.\-\)]\s+)', professor_text)
     
     for section in prof_items:
         if not section.strip():
             continue
         
         # Extract the item title/number
-        title_match = re.match(r'(\d+)\.\s+(.+?)(?:\n|$)', section)
+        title_match = re.match(r'(\d+)[\.\-\)]\s+(.+?)(?:\n|$)', section)
         if not title_match:
             continue
         
@@ -108,38 +117,30 @@ def parse_review(review_text):
         
         # Classify severity based on language
         text_lower = section.lower()
-        if any(w in text_lower for w in ['major', 'significant', 'primary', 'most important']):
+        if any(w in text_lower for w in ['major', 'significant', 'primary', 'جوهري', 'رئيسي', 'حرج']):
             severity = "major"
-        elif any(w in text_lower for w in ['minor', 'small', 'slight', 'cosmetic']):
+        elif any(w in text_lower for w in ['minor', 'small', 'slight', 'ثانوي', 'بسيط', 'شكلي']):
             severity = "minor"
         else:
             severity = "moderate"
         
         # Classify type
-        if any(w in text_lower for w in ['cut', 'compress', 'trim', 'reduce', 'consolidate']):
+        if any(w in text_lower for w in ['cut', 'compress', 'trim', 'reduce', 'حذف', 'اختزال', 'تكثيف']):
             fix_type = "compression"
-        elif any(w in text_lower for w in ['add', 'expand', 'introduce', 'give', 'more']):
+        elif any(w in text_lower for w in ['add', 'expand', 'introduce', 'إضافة', 'توسيع', 'تعميق']):
             fix_type = "addition"  
-        elif any(w in text_lower for w in ['repetit', 'recurring', 'frequency', 'tic', 'gesture']):
+        elif any(w in text_lower for w in ['repetit', 'recurring', 'tic', 'gesture', 'تكرار', 'لازمة']):
             fix_type = "mechanical"
-        elif any(w in text_lower for w in ['restructur', 'rearrang', 'move', 'reorganiz']):
+        elif any(w in text_lower for w in ['restructur', 'rearrang', 'بناء', 'إعادة ترتيب']):
             fix_type = "structural"
         else:
             fix_type = "revision"
         
-        # Check if this is qualified/hedged (diminishing returns signal)
+        # Check if qualified
         qualified = any(phrase in text_lower for phrase in [
             'individually fine', 'largely successful', 'each instance works',
-            'minor relative to', 'small complaint', 'costs of ambition',
-            'not a flaw', 'deliberate choice', 'thematically coherent'
+            'ناجح في مجمله', 'خيار فني مدروس', 'مبرر سياقياً'
         ])
-        
-        # Extract specific suggestion
-        suggestion = ""
-        sugg_match = re.search(r'(?:Specific\s+)?[Ss]uggestion[s]?:?\s*\n?(.*?)(?=\n\d+\.|\n\n[A-Z]|\Z)', 
-                               section, re.DOTALL)
-        if sugg_match:
-            suggestion = sugg_match.group(1).strip()[:500]
         
         items.append({
             "number": num,
@@ -147,36 +148,27 @@ def parse_review(review_text):
             "severity": severity,
             "type": fix_type,
             "qualified": qualified,
-            "suggestion": suggestion,
-            "full_text": section.strip()[:1000],
+            "full_text": section.strip(),
         })
     
     return {
         "stars": stars,
-        "critic_summary": critic_text.strip()[:500],
+        "critic_text": critic_text,
+        "professor_text": professor_text,
+        "critic_summary": critic_text[:600] + ("..." if len(critic_text) > 600 else ""),
         "professor_items": items,
         "total_items": len(items),
         "major_items": sum(1 for i in items if i["severity"] == "major"),
         "qualified_items": sum(1 for i in items if i["qualified"]),
-        "raw_text": review_text,
     }
 
 
-def should_stop(parsed_review):
-    """Determine if the novel is done being revised.
+def should_stop(parsed):
+    stars = parsed.get("stars", 0) or 0
+    major = parsed.get("major_items", 0)
+    total = parsed.get("total_items", 0)
+    qualified = parsed.get("qualified_items", 0)
     
-    Stopping conditions:
-    - Stars >= 4
-    - No major unqualified items
-    - More than half the items are qualified/hedged
-    """
-    stars = parsed_review.get("stars", 0) or 0
-    total = parsed_review["total_items"]
-    major = parsed_review["major_items"]
-    qualified = parsed_review["qualified_items"]
-    
-    if stars >= 4.5 and major == 0:
-        return True, "★★★★½ with no major items"
     if stars >= 4 and total > 0 and qualified / total > 0.5:
         return True, f"★{'★' * int(stars)} with {qualified}/{total} items qualified"
     if total <= 2:
@@ -190,12 +182,32 @@ def cmd_review(args):
     title = get_title()
     manuscript = build_manuscript()
     
-    prompt = REVIEW_PROMPT.format(title=title, manuscript=manuscript)
+    lang = detect_project_language()
+    if lang == "ar":
+        prompt = f"""اقرأ هذه الرواية كاملة بعناية نقدية فائقة: "{title}".
+قدّم مراجعة نقدية عميقة للعمل مقسمة إلى قسمين منفصلين:
+
+القسم الأول: [مراجعة الناقد الأدبي]
+اكتب مراجعة نقدية صحفية رصينة (مثل مراجعات الملحق الثقافي) تقيم فيها الأصالة الأدبية، النبرة، بناء العالم، وواقعية الشخصيات. اختم القسم بتقييم بالنجوم من 5 نجوم (مثال: ★★★★½ أو 4.5 / 5).
+
+القسم الثاني: [توجيهات أستاذ الكتابة الروائية]
+اكتب تحليلاً تقنياً صارماً موجهاً للمؤلف، يحدد فيه 3 إلى 6 ملاحظات حرفية دقيقة مرقمة (1. 2. 3...) مع أمثلة وحلول محددة لأي مواضع ترهل أو ميلودراما أو خلل في الإيقاع.
+
+المخطوطة الكاملة:
+{manuscript}
+"""
+    else:
+        prompt = f"""Read the below complete novel, "{title}". Review it first as a literary critic (like a major newspaper book review) and then as a professor of fiction.
+In the professor section, give specific, actionable craft suggestions numbered (1. 2. 3...) for any defects or pacing lulls you find. Give a star rating out of 5 (e.g. ★★★★½).
+
+MANUSCRIPT:
+{manuscript}
+"""
     
+    print(f"Calling LLM for full manuscript review (Title: {title}, Words: {len(manuscript.split()):,})...", flush=True)
     review_text = call_opus(prompt)
     
-    # Save raw review
-    LOGS_DIR.mkdir(exist_ok=True)
+    LOGS_DIR.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = LOGS_DIR / f"{timestamp}_review.json"
     
@@ -203,24 +215,23 @@ def cmd_review(args):
     parsed["timestamp"] = timestamp
     parsed["title"] = title
     parsed["word_count"] = len(manuscript.split())
+    parsed["review_text"] = review_text
     
-    log_path.write_text(json.dumps(parsed, indent=2, default=str))
-    print(f"\nReview saved to {log_path}", file=sys.stderr)
+    log_path.write_text(json.dumps(parsed, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"\n✓ Review saved to {log_path}", flush=True)
     
     # Save human-readable copy
     if args.output:
-        Path(args.output).write_text(review_text)
-        print(f"Human-readable copy: {args.output}", file=sys.stderr)
+        Path(args.output).write_text(review_text, encoding="utf-8")
+        print(f"Human-readable copy: {args.output}", flush=True)
     
-    # Print summary
     stop, reason = should_stop(parsed)
-    print(f"\n{'='*50}")
-    print(f"REVIEW SUMMARY")
-    print(f"  Stars: {parsed['stars']}")
-    print(f"  Items: {parsed['total_items']} ({parsed['major_items']} major)")
-    print(f"  Qualified: {parsed['qualified_items']}/{parsed['total_items']}")
-    print(f"  Stop revising? {'YES — ' + reason if stop else 'NO — ' + reason}")
-    print(f"{'='*50}")
+    print(f"\n{'='*50}", flush=True)
+    print(f"REVIEW SUMMARY", flush=True)
+    print(f"  Stars: {parsed['stars']}", flush=True)
+    print(f"  Items: {parsed['total_items']} ({parsed['major_items']} major)", flush=True)
+    print(f"  Stop revising? {'YES — ' + reason if stop else 'NO — ' + reason}", flush=True)
+    print(f"{'='*50}", flush=True)
     
     return parsed
 

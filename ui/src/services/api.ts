@@ -46,6 +46,22 @@ export async function saveChapter(num: number, content: string) {
   return res.json();
 }
 
+export async function fetchChapterBeats(num: number): Promise<{ chapter: number; title: string; beats: string; exists: boolean }> {
+  const res = await fetch(`${API_BASE}/chapters/${num}/beats`);
+  if (!res.ok) throw new Error(`Failed to fetch beats for chapter ${num}`);
+  return res.json();
+}
+
+export async function saveChapterBeats(num: number, beats: string): Promise<{ status: string; chapter: number; backup: string; beats: string }> {
+  const res = await fetch(`${API_BASE}/chapters/${num}/beats`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ beats }),
+  });
+  if (!res.ok) throw new Error(`Failed to save beats for chapter ${num}`);
+  return res.json();
+}
+
 export async function fetchEditLogs() {
   const res = await fetch(`${API_BASE}/logs/edit`);
   if (!res.ok) throw new Error('Failed to fetch edit logs');
@@ -166,5 +182,57 @@ export async function saveSettings(settings: Partial<EngineSettings>) {
     body: JSON.stringify(settings),
   });
   if (!res.ok) throw new Error('Failed to save settings');
+  return res.json();
+}
+
+// Project Management
+export async function fetchProjects() {
+  const res = await fetch(`${API_BASE}/projects`);
+  if (!res.ok) throw new Error('Failed to fetch projects');
+  return res.json();
+}
+
+export async function createProject(name: string) {
+  const res = await fetch(`${API_BASE}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to create project' }));
+    throw new Error(err.detail || 'Failed to create project');
+  }
+  return res.json();
+}
+
+export async function setActiveProject(id: string) {
+  const res = await fetch(`${API_BASE}/projects/set_active`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) throw new Error('Failed to set active project');
+  return res.json();
+}
+
+export async function deleteProject(id: string) {
+  const res = await fetch(`${API_BASE}/projects/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || `Failed to delete project ${id}`);
+  }
+  return res.json();
+}
+
+
+export async function fetchRevisionHealth() {
+  const res = await fetch(`${API_BASE}/analytics/revision_health`);
+  if (!res.ok) throw new Error('Failed to fetch revision health');
+  return res.json();
+}
+
+export async function fetchEvalLog(chNum: number) {
+  const res = await fetch(`${API_BASE}/logs/eval/${chNum}`);
+  if (!res.ok) throw new Error(`Failed to fetch eval log for chapter ${chNum}`);
   return res.json();
 }
