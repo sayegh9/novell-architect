@@ -1073,7 +1073,49 @@ def _build_art(params: Mapping[str, Any]) -> ActionCommand:
     subcommand = params.get("subcommand", "all")
     if not isinstance(subcommand, str) or not subcommand:
         raise ValueError("subcommand must be a non-empty string")
-    return _command(("gen_art.py", subcommand))
+
+    parts = subcommand.split()
+    art_types = {"cover", "ornament", "map", "scene-break"}
+    if len(parts) == 1 and parts[0] in {
+        "style",
+        "ornaments-all",
+        "scene-break",
+        "all",
+    }:
+        argv = parts
+    elif parts[:1] == ["curate"] and len(parts) in {2, 3, 4}:
+        if parts[1] not in art_types:
+            raise ValueError("gen_art subcommand has an invalid art type")
+        if len(parts) == 2:
+            argv = parts
+        elif len(parts) == 3 and parts[2].startswith("--n="):
+            count = parts[2].removeprefix("--n=")
+            if not count.isdigit() or int(count) < 1:
+                raise ValueError("gen_art subcommand has an invalid variant count")
+            argv = parts
+        elif len(parts) == 4 and parts[2] == "--n":
+            if not parts[3].isdigit() or int(parts[3]) < 1:
+                raise ValueError("gen_art subcommand has an invalid variant count")
+            argv = parts
+        else:
+            raise ValueError("gen_art subcommand is not supported")
+    elif parts[:1] == ["pick"] and len(parts) == 3:
+        if parts[1] not in art_types:
+            raise ValueError("gen_art subcommand has an invalid art type")
+        if not parts[2].isdigit() or int(parts[2]) < 1:
+            raise ValueError("gen_art subcommand has an invalid variant number")
+        argv = parts
+    elif parts[:1] == ["vectorize"] and len(parts) in {1, 2}:
+        if len(parts) == 2 and (
+            ".." in parts[1]
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", parts[1]) is None
+        ):
+            raise ValueError("gen_art subcommand has an invalid vectorize target")
+        argv = parts
+    else:
+        raise ValueError("gen_art subcommand is not supported")
+
+    return _command(("gen_art.py", *argv), f"gen_art.py {subcommand}")
 
 
 def _build_brief(params: Mapping[str, Any]) -> ActionCommand:

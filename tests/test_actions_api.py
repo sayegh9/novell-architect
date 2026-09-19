@@ -199,6 +199,68 @@ class ActionApiTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_gen_art_legacy_forms_map_to_typed_argv(self):
+        cases = (
+            (
+                "curate cover --n=6",
+                ("gen_art.py", "curate", "cover", "--n=6"),
+            ),
+            (
+                "curate map --n 4",
+                ("gen_art.py", "curate", "map", "--n", "4"),
+            ),
+            ("pick cover 3", ("gen_art.py", "pick", "cover", "3")),
+            (
+                "vectorize scene_break",
+                ("gen_art.py", "vectorize", "scene_break"),
+            ),
+        )
+
+        for subcommand, expected_argv in cases:
+            with self.subTest(subcommand=subcommand):
+                server.job_state.is_running = False
+                background = RecordingBackgroundTasks()
+
+                response = await server.api_run_action(
+                    server.RunActionRequest(
+                        action="gen_art", params={"subcommand": subcommand}
+                    ),
+                    background,
+                )
+
+                display = f"gen_art.py {subcommand}"
+                self.assertEqual(response, {"status": "started", "cmd": display})
+                self.assertEqual(
+                    background.calls,
+                    [(server.run_command_stream, (expected_argv, display), {})],
+                )
+
+    async def test_gen_art_rejects_unrecognized_legacy_forms_without_scheduling(self):
+        cases = (
+            "style --unexpected",
+            "curate poster --n=4",
+            "curate cover --n=4;touch",
+            "pick ../../cover 1",
+            "vectorize ../cover",
+        )
+
+        for subcommand in cases:
+            with self.subTest(subcommand=subcommand):
+                server.job_state.is_running = False
+                background = RecordingBackgroundTasks()
+
+                with self.assertRaises(HTTPException) as raised:
+                    await server.api_run_action(
+                        server.RunActionRequest(
+                            action="gen_art", params={"subcommand": subcommand}
+                        ),
+                        background,
+                    )
+
+                self.assertEqual(raised.exception.status_code, 400)
+                self.assertIn("subcommand", str(raised.exception.detail))
+                self.assertEqual(background.calls, [])
+
     async def test_unknown_and_invalid_actions_do_not_schedule_a_process(self):
         cases = (
             ("not_registered", {}, "Unknown action"),
