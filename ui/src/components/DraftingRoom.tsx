@@ -127,13 +127,15 @@ export const DraftingRoom: React.FC = () => {
   const handleSaveBeats = async () => {
     try {
       setSavingBeats(true);
-      await saveChapterBeats(selectedCh, editedBeatsText);
-      setBeats(editedBeatsText);
+      const savedBeats = await saveChapterBeats(selectedCh, editedBeatsText);
+      setBeats(savedBeats.beats);
+      setEditedBeatsText(savedBeats.beats);
       setIsEditingBeats(false);
       success(t('drafting.beats_saved'));
-      loadOutlineDoc();
-    } catch (e: any) {
-      error(`Save beats failed: ${e.message}`);
+      await loadOutlineDoc();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unexpected error';
+      error(`Save beats failed: ${message}`);
     } finally {
       setSavingBeats(false);
     }

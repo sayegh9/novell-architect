@@ -2,6 +2,33 @@ import { ProjectInfo, PlanningDoc, BriefItem, AnalyticsData, VoiceMetricsData, E
 
 const API_BASE = '/api';
 
+export interface ChapterBeatsResponse {
+  chapter: number;
+  title: string;
+  beats: string;
+  exists: boolean;
+}
+
+export interface SaveChapterBeatsRequest {
+  beats: string;
+}
+
+export interface SaveChapterBeatsResponse {
+  status: 'saved';
+  chapter: number;
+  backup: string;
+  beats: string;
+}
+
+interface ApiErrorResponse {
+  detail?: string;
+}
+
+async function apiError(response: Response, fallback: string): Promise<Error> {
+  const payload: ApiErrorResponse = await response.json().catch((): ApiErrorResponse => ({}));
+  return new Error(payload.detail || fallback);
+}
+
 export async function fetchState(): Promise<ProjectInfo> {
   const res = await fetch(`${API_BASE}/state`);
   if (!res.ok) throw new Error('Failed to fetch state');
@@ -46,19 +73,24 @@ export async function saveChapter(num: number, content: string) {
   return res.json();
 }
 
-export async function fetchChapterBeats(num: number): Promise<{ chapter: number; title: string; beats: string; exists: boolean }> {
+export async function fetchChapterBeats(num: number): Promise<ChapterBeatsResponse> {
   const res = await fetch(`${API_BASE}/chapters/${num}/beats`);
-  if (!res.ok) throw new Error(`Failed to fetch beats for chapter ${num}`);
+  if (!res.ok) {
+    throw await apiError(res, `Failed to fetch beats for chapter ${num}`);
+  }
   return res.json();
 }
 
-export async function saveChapterBeats(num: number, beats: string): Promise<{ status: string; chapter: number; backup: string; beats: string }> {
+export async function saveChapterBeats(num: number, beats: string): Promise<SaveChapterBeatsResponse> {
+  const request: SaveChapterBeatsRequest = { beats };
   const res = await fetch(`${API_BASE}/chapters/${num}/beats`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ beats }),
+    body: JSON.stringify(request),
   });
-  if (!res.ok) throw new Error(`Failed to save beats for chapter ${num}`);
+  if (!res.ok) {
+    throw await apiError(res, `Failed to save beats for chapter ${num}`);
+  }
   return res.json();
 }
 

@@ -18,6 +18,7 @@ import glob
 import re
 import signal
 import statistics
+from datetime import datetime
 from pathlib import Path
 
 from typing import Optional, List, Dict, Any
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from outline_utils import find_chapter_outline, replace_chapter_outline
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
@@ -295,6 +297,70 @@ def api_save_chapter(ch_num: int, req: SaveChapterRequest):
         "status": "saved",
         "chapter": ch_num,
         "word_count": len(req.content.split())
+    }
+
+
+class SaveChapterBeatsRequest(BaseModel):
+    beats: str
+
+
+def _read_outline_for_beats(ch_num: int) -> tuple[Path, str]:
+    if ch_num < 1:
+        raise HTTPException(
+            status_code=400, detail="Chapter number must be a positive integer"
+        )
+
+    outline_path = PROJECT_DIR / "outline.md"
+    if not outline_path.is_file():
+        raise HTTPException(status_code=404, detail="outline.md not found")
+    return outline_path, outline_path.read_text(encoding="utf-8")
+
+
+@app.get("/api/chapters/{ch_num}/beats")
+def api_get_chapter_beats(ch_num: int):
+    """Return the selected chapter's full Markdown outline section."""
+    _, outline_text = _read_outline_for_beats(ch_num)
+    beats = find_chapter_outline(outline_text, ch_num)
+    if beats is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chapter {ch_num} section not found in outline.md",
+        )
+
+    first_line = beats.splitlines()[0]
+    title = re.sub(r"^[#\s*]+|[#\s*]+$", "", first_line).strip()
+    return {
+        "chapter": ch_num,
+        "title": title,
+        "beats": beats,
+        "exists": True,
+    }
+
+
+@app.post("/api/chapters/{ch_num}/beats")
+def api_save_chapter_beats(ch_num: int, req: SaveChapterBeatsRequest):
+    """Replace one outline section after validation, preserving a full backup."""
+    outline_path, outline_text = _read_outline_for_beats(ch_num)
+    try:
+        updated_outline = replace_chapter_outline(outline_text, ch_num, req.beats)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    backup_dir = PROJECT_DIR / "outline_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_path = backup_dir / f"outline_{timestamp}.md"
+    backup_path.write_text(outline_text, encoding="utf-8")
+    outline_path.write_text(updated_outline, encoding="utf-8")
+
+    saved_beats = find_chapter_outline(updated_outline, ch_num)
+    return {
+        "status": "saved",
+        "chapter": ch_num,
+        "backup": str(backup_path.relative_to(PROJECT_DIR)),
+        "beats": saved_beats,
     }
 
 
