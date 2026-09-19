@@ -1352,6 +1352,39 @@ async def websocket_endpoint(websocket: WebSocket):
 import shutil
 
 
+PROJECT_ID_PATTERN = re.compile(r"[\w\u0600-\u06FF-]+")
+PROJECT_RESERVED_IDS = frozenset({"root", ".", ".."})
+
+
+def get_projects_dir() -> Path:
+    projects_dir = (SCRIPT_DIR / "projects").resolve()
+    projects_dir.mkdir(exist_ok=True)
+    return projects_dir
+
+
+def resolve_project_path(project_id: str, *, require_exists: bool = True) -> Path:
+    """Resolve a project ID to a non-symlinked direct child of projects/."""
+    if (
+        not project_id
+        or project_id in PROJECT_RESERVED_IDS
+        or PROJECT_ID_PATTERN.fullmatch(project_id) is None
+    ):
+        raise HTTPException(400, "Invalid project ID")
+
+    projects_dir = get_projects_dir()
+    candidate = projects_dir / project_id
+    if candidate.parent != projects_dir or candidate.is_symlink():
+        raise HTTPException(400, "Project path must be an exact directory under projects")
+
+    resolved = candidate.resolve(strict=False)
+    if resolved != candidate or resolved.parent != projects_dir:
+        raise HTTPException(400, "Project path must be an exact directory under projects")
+
+    if require_exists and (not candidate.exists() or not candidate.is_dir()):
+        raise HTTPException(404, "Project not found")
+    return candidate
+
+
 def get_project_metadata(p_dir):
     import json
     meta = {
@@ -1391,8 +1424,7 @@ def get_project_metadata(p_dir):
 
 @app.get("/api/projects")
 def api_list_projects():
-    projects_dir = SCRIPT_DIR / "projects"
-    projects_dir.mkdir(exist_ok=True)
+    projects_dir = get_projects_dir()
     projects = []
     
     root_meta = get_project_metadata(SCRIPT_DIR)
@@ -1405,13 +1437,19 @@ def api_list_projects():
     })
 
     for p in projects_dir.iterdir():
-        if p.is_dir():
-            p_meta = get_project_metadata(p)
+        if p.is_symlink() or not p.is_dir():
+            continue
+        try:
+            project_dir = resolve_project_path(p.name)
+        except HTTPException:
+            continue
+        if project_dir.is_dir():
+            p_meta = get_project_metadata(project_dir)
             projects.append({
-                "id": p.name,
-                "name": p.name,
-                "path": str(p),
-                "is_active": str(PROJECT_DIR) == str(p),
+                "id": project_dir.name,
+                "name": project_dir.name,
+                "path": str(project_dir),
+                "is_active": PROJECT_DIR.resolve() == project_dir,
                 **p_meta
             })
     return {"projects": projects, "active_project": str(PROJECT_DIR)}
@@ -1422,15 +1460,22 @@ class CreateProjectRequest(BaseModel):
 
 @app.post("/api/projects")
 def api_create_project(req: CreateProjectRequest):
-    projects_dir = SCRIPT_DIR / "projects"
-    projects_dir.mkdir(exist_ok=True)
-    
-    safe_name = re.sub(r'[^\w؀-ۿ\-]', '_', req.name.strip())
+    raw_name = req.name.strip()
+    if (
+        not raw_name
+        or raw_name in {".", ".."}
+        or "/" in raw_name
+        or "\\" in raw_name
+        or "%" in raw_name
+    ):
+        raise HTTPException(400, "Invalid project name")
+
+    safe_name = re.sub(r'[^\w؀-ۿ\-]', '_', raw_name)
     if not safe_name:
         raise HTTPException(400, "Invalid project name")
-        
-    p_dir = projects_dir / safe_name
-    if p_dir.exists():
+
+    p_dir = resolve_project_path(safe_name, require_exists=False)
+    if p_dir.exists() or p_dir.is_symlink():
         raise HTTPException(400, "Project already exists")
         
     p_dir.mkdir()
@@ -1457,15 +1502,10 @@ def api_create_project(req: CreateProjectRequest):
 def api_delete_project(project_id: str):
     if project_id == "root":
         raise HTTPException(400, "Cannot delete root project")
-    p_dir = SCRIPT_DIR / "projects" / project_id
-    if not p_dir.exists() or not p_dir.is_dir():
-        raise HTTPException(404, "Project not found")
-        
-    if str(PROJECT_DIR) == str(p_dir):
-        # Fallback to root if deleting active project
-        api_set_active_project(SetActiveProjectRequest(id="root"))
-        
-    import shutil
+    p_dir = resolve_project_path(project_id)
+    if PROJECT_DIR.resolve() == p_dir:
+        raise HTTPException(409, "Cannot delete active project")
+
     shutil.rmtree(p_dir)
     return {"status": "deleted", "id": project_id}
 
@@ -1478,11 +1518,9 @@ def api_set_active_project(req: SetActiveProjectRequest):
     global ORCHESTRATOR_LOG_PATH
     
     if req.id == "root":
-        new_dir = SCRIPT_DIR
+        new_dir = SCRIPT_DIR.resolve()
     else:
-        new_dir = SCRIPT_DIR / "projects" / req.id
-        if not new_dir.exists():
-            raise HTTPException(404, "Project not found")
+        new_dir = resolve_project_path(req.id)
             
     PROJECT_DIR = new_dir.resolve()
     os.environ["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
