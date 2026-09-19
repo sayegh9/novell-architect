@@ -15,6 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 from llm import call_writer as _call_writer
 from language_utils import detect_project_language, load_prompt, clean_chapter_text
+from outline_utils import extract_chapter_outline, extract_next_chapter_outline
 
 CHAPTERS_DIR = BASE_DIR / "chapters"
 CHAPTERS_DIR.mkdir(parents=True, exist_ok=True)
@@ -27,30 +28,6 @@ def load_file(path):
         return Path(path).read_text(encoding="utf-8")
     except FileNotFoundError:
         return ""
-
-def extract_chapter_outline(outline_text, chapter_num):
-    """Extract a specific chapter's outline entry."""
-    pattern = rf'(?:^|\n)(#+\s*(?:الفصل|فصل|Ch|Chapter)\s+{chapter_num}[:\s].*?)(?=(?:\n#+\s*(?:الفصل|فصل|Ch|Chapter)\s+{chapter_num + 1}[:\s])|(?:\n#+\s*(?:ACT|MIDPOINT|Foreshadowing|الملاحظات|الملحق|خريطة|نبضات|ممنوعات))|\Z)'
-    match = re.search(pattern, outline_text, re.DOTALL | re.IGNORECASE)
-
-    if match:
-        content = match.group(1).strip()
-        content = re.sub(r'\n+---+\s*$', '', content).strip()
-        return content
-    
-    # Fallback with Arabic word numbers
-    arabic_numbers = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر",
-                      "الحادي عشر", "الثاني عشر", "الثالث عشر", "الرابع عشر", "الخامس عشر", "السادس عشر", "السابع عشر",
-                      "الثامن عشر", "التاسع عشر", "العشرون", "الحادي والعشرون", "الثاني والعشرون", "الثالث والعشرون", "الرابع والعشرون"]
-    if 1 <= chapter_num <= len(arabic_numbers):
-        ar_num_str = arabic_numbers[chapter_num - 1]
-        pattern_ar = rf'(?:^|\n)(#+\s*(?:الفصل|فصل)\s+{ar_num_str}[:\s].*?)(?=(?:\n#+\s*(?:الفصل|فصل))|(?:\n#+\s*(?:ACT|Foreshadowing|الملاحظات|الملحق))|\Z)'
-        match = re.search(pattern_ar, outline_text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-
-    return f"Chapter {chapter_num} beats from outline"
-
 
 def chunk_outline(outline_text: str, num_chunks: int = 3) -> list[str]:
     """Split the outline entry into roughly equal chunks of lines/beats."""
@@ -94,6 +71,9 @@ def main():
     # Load Prompts dynamically
     system_prompt = load_prompt("writer_system")
     draft_template = load_prompt("draft_segment")
+    lang = detect_project_language()
+    is_arabic = lang == "ar"
+    novel_type = os.environ.get("AUTONOVEL_NOVEL_TYPE", "novel")
     
     # Chapter-specific context
     chapter_outline = extract_chapter_outline(outline, chapter_num)
@@ -124,7 +104,6 @@ def main():
         else:
             previous_scenes_text = accumulated_text[-3000:] # Only show last ~3000 chars for context limits
         
-novel_type = os.environ.get("AUTONOVEL_NOVEL_TYPE", "novel")
         if is_arabic:
             len_inst = "استهدف كتابة ما بين 600 إلى 800 كلمة لهذا الجزء وحده." if novel_type == "novella" else "استهدف كتابة ما بين 800 إلى 1200 كلمة لهذا الجزء وحده."
         else:

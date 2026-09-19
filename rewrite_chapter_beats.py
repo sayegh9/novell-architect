@@ -23,11 +23,10 @@ load_dotenv(BASE_DIR / ".env", override=True)
 from llm import call_writer as _call_writer
 from language_utils import (
     detect_project_language,
-    get_arabic_writer_system_prompt,
-    get_english_writer_system_prompt,
+    load_prompt,
     clean_chapter_text
 )
-from draft_chapter import extract_chapter_outline, extract_next_chapter_outline
+from outline_utils import extract_chapter_outline, extract_next_chapter_outline
 
 CHAPTERS_DIR = BASE_DIR / "chapters"
 BACKUPS_DIR = BASE_DIR / "chapters_backup"
@@ -108,7 +107,7 @@ def main():
     # 5. Build prompt according to mode and language
     if is_arabic:
         if mode == "fresh" or not existing_draft:
-            system_prompt = get_arabic_writer_system_prompt()
+            system_prompt = load_prompt("writer_system")
             prompt = f"""أنت روائي وأديب محترف، تقوم بصياغة وكتابة مسودة جديدة بالكامل للفصل رقم {chapter_num} بناءً على نبضات المخطط المحدثة.
 
 فكرة الرواية الأساسية (البذرة):
@@ -191,7 +190,7 @@ def main():
     else:
         # English novel pipeline
         if mode == "fresh" or not existing_draft:
-            system_prompt = get_english_writer_system_prompt()
+            system_prompt = load_prompt("writer_system")
             prompt = f"""Draft Chapter {chapter_num} of this literary fantasy novel following the updated outline beats.
 
 SEED CONCEPT:
