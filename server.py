@@ -1357,8 +1357,14 @@ PROJECT_RESERVED_IDS = frozenset({"root", ".", ".."})
 
 
 def get_projects_dir() -> Path:
-    projects_dir = (SCRIPT_DIR / "projects").resolve()
-    projects_dir.mkdir(exist_ok=True)
+    projects_path = SCRIPT_DIR / "projects"
+    if projects_path.is_symlink():
+        raise HTTPException(400, "Projects directory must not be a symlink")
+
+    projects_path.mkdir(exist_ok=True)
+    projects_dir = projects_path.resolve()
+    if projects_dir != projects_path.absolute():
+        raise HTTPException(400, "Projects directory must not be a symlink")
     return projects_dir
 
 

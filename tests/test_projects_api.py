@@ -120,6 +120,40 @@ class ProjectApiTests(unittest.TestCase):
         remove_tree.assert_not_called()
         self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
 
+    def test_project_operations_reject_symlinked_projects_directory(self):
+        self.projects_dir.rmdir()
+        external_projects = self.script_dir / "external-projects"
+        external_projects.mkdir()
+        external_project = external_projects / "external-project"
+        external_project.mkdir()
+        marker = external_project / "keep.txt"
+        marker.write_text("safe", encoding="utf-8")
+        self.projects_dir.symlink_to(external_projects, target_is_directory=True)
+
+        operations = (
+            server.api_list_projects,
+            lambda: server.api_delete_project("external-project"),
+            lambda: server.api_set_active_project(
+                server.SetActiveProjectRequest(id="external-project")
+            ),
+            lambda: server.api_create_project(
+                server.CreateProjectRequest(name="new-project")
+            ),
+        )
+
+        with patch.object(server.shutil, "rmtree") as remove_tree:
+            for operation in operations:
+                with self.subTest(operation=operation):
+                    self.assert_http_error(
+                        operation,
+                        400,
+                        "Projects directory must not be a symlink",
+                    )
+
+        remove_tree.assert_not_called()
+        self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
+        self.assertFalse((external_projects / "new-project").exists())
+
     def test_select_rejects_symlink_escape(self):
         outside = self.script_dir / "outside-project"
         outside.mkdir()
