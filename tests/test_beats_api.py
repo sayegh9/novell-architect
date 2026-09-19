@@ -107,6 +107,34 @@ The gate opens.
         self.assertEqual(reloaded.status_code, 200)
         self.assertEqual(reloaded.json()["beats"], replacement.strip())
 
+    def test_post_preserves_crlf_bytes_outside_replaced_section_and_in_backup(self):
+        original = (
+            b"# Story Outline\r\n"
+            b"\r\n"
+            b"## Chapter 1: Original\r\n"
+            b"- Replace this beat.\r\n"
+            b"\r\n"
+            b"## Chapter 2: Untouched\r\n"
+            b"- Keep these CRLF bytes.\r\n"
+        )
+        outline_path = self.project_dir / "outline.md"
+        outline_path.write_bytes(original)
+        untouched_suffix = original[original.index(b"## Chapter 2: Untouched") :]
+
+        response = self.client.post(
+            "/api/chapters/1/beats",
+            json={"beats": "## Chapter 1: Updated\n- A new beat."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        updated = outline_path.read_bytes()
+        self.assertEqual(
+            updated[updated.index(b"## Chapter 2: Untouched") :],
+            untouched_suffix,
+        )
+        backup_path = self.project_dir / response.json()["backup"]
+        self.assertEqual(backup_path.read_bytes(), original)
+
     def test_invalid_chapter_number_is_rejected_without_touching_outline(self):
         outline_path = self.write_outline()
 

@@ -78,3 +78,30 @@ Repository-root `python -m unittest discover -v` is not clean before/after this 
 3. `test_llm_pipeline.TestScriptImports.test_script_modules_importable` fails importing `gen_revision` because `language_utils` lacks `get_arabic_writer_system_prompt`.
 
 The offline suite under `tests/` and all focused Phase 2 tests pass. No Phase 2 functional concern remains.
+
+## Round 1 review fix: preserve CRLF outside the replaced section
+
+Reviewer feedback identified that `Path.read_text()` used universal-newline conversion, so saving a CRLF outline rewrote untouched sections and the backup with LF line endings.
+
+RED evidence:
+
+```text
+python -m unittest tests.test_beats_api.ChapterBeatsApiTests.test_post_preserves_crlf_bytes_outside_replaced_section_and_in_backup -v
+FAIL: b'## Chapter 2: Untouched\n- Keep these CRLF bytes.\n'
+   != b'## Chapter 2: Untouched\r\n- Keep these CRLF bytes.\r\n'
+Ran 1 test in 0.013s — FAILED
+```
+
+Fix: outline and backup text files are now opened with UTF-8 and `newline=""` for both reads and writes. This disables universal-newline translation while leaving parsing, validation, replacement boundaries, and response fields unchanged.
+
+GREEN/final evidence:
+
+```text
+Focused CRLF regression: Ran 1 test — OK
+Complete beats API suite: Ran 6 tests — OK
+python -m unittest discover -s tests -v: Ran 14 tests in 0.068s — OK
+npm run build --prefix ui: 1604 modules transformed — success in 2.63s
+git diff --check -- server.py tests/test_beats_api.py: clean
+```
+
+Self-review: the regression compares raw bytes for the untouched Chapter 2 suffix and the timestamped backup. Reintroducing `read_text()` or omitting `newline=""` would fail it. Existing LF behavior and API responses remain covered by the original five tests.

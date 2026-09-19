@@ -313,7 +313,8 @@ def _read_outline_for_beats(ch_num: int) -> tuple[Path, str]:
     outline_path = PROJECT_DIR / "outline.md"
     if not outline_path.is_file():
         raise HTTPException(status_code=404, detail="outline.md not found")
-    return outline_path, outline_path.read_text(encoding="utf-8")
+    with outline_path.open("r", encoding="utf-8", newline="") as outline_file:
+        return outline_path, outline_file.read()
 
 
 @app.get("/api/chapters/{ch_num}/beats")
@@ -352,8 +353,10 @@ def api_save_chapter_beats(ch_num: int, req: SaveChapterBeatsRequest):
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = backup_dir / f"outline_{timestamp}.md"
-    backup_path.write_text(outline_text, encoding="utf-8")
-    outline_path.write_text(updated_outline, encoding="utf-8")
+    with backup_path.open("w", encoding="utf-8", newline="") as backup_file:
+        backup_file.write(outline_text)
+    with outline_path.open("w", encoding="utf-8", newline="") as outline_file:
+        outline_file.write(updated_outline)
 
     saved_beats = find_chapter_outline(updated_outline, ch_num)
     return {
