@@ -18,10 +18,11 @@ import glob
 import re
 import signal
 import statistics
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable, Mapping, Sequence
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
@@ -959,15 +960,221 @@ class RunActionRequest(BaseModel):
     action: str
     params: Dict[str, Any] = {}
 
-async def run_command_stream(cmd: str):
-    """Execute a shell command and stream output line by line over WebSocket."""
+
+@dataclass(frozen=True)
+class ActionCommand:
+    argv: tuple[str, ...]
+    display: str
+
+
+ActionBuilder = Callable[[Mapping[str, Any]], ActionCommand]
+
+
+def _command(argv: Sequence[str], display: str | None = None) -> ActionCommand:
+    command_argv = tuple(argv)
+    return ActionCommand(command_argv, display or " ".join(command_argv))
+
+
+def _positive_int(value: Any, name: str, default: int | None = None) -> int:
+    if value is None and default is not None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _strict_bool(value: Any, name: str, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be a boolean")
+    return value
+
+
+def _chapter_or_all(value: Any, name: str = "chapter") -> str:
+    if value == "all":
+        return "all"
+    return str(_positive_int(value, name))
+
+
+def _simple_action(script: str, *args: str) -> ActionBuilder:
+    def build(_params: Mapping[str, Any]) -> ActionCommand:
+        return _command((script, *args))
+
+    return build
+
+
+def _build_seed(params: Mapping[str, Any]) -> ActionCommand:
+    riff = params.get("riff")
+    if riff:
+        if not isinstance(riff, str):
+            raise ValueError("riff must be a string")
+        return _command(
+            ("seed.py", "--riff", riff),
+            f'seed.py --riff "{riff}"',
+        )
+    count = _positive_int(params.get("count"), "count", default=10)
+    return _command(("seed.py", "--count", str(count)))
+
+
+def _build_chapter_action(script: str, default: int = 1) -> ActionBuilder:
+    def build(params: Mapping[str, Any]) -> ActionCommand:
+        chapter = _positive_int(params.get("chapter"), "chapter", default=default)
+        return _command((script, str(chapter)))
+
+    return build
+
+
+def _build_evaluate_chapter(params: Mapping[str, Any]) -> ActionCommand:
+    chapter = _positive_int(params.get("chapter"), "chapter", default=1)
+    return _command(("evaluate.py", f"--chapter={chapter}"))
+
+
+def _build_all_or_chapter_action(script: str) -> ActionBuilder:
+    def build(params: Mapping[str, Any]) -> ActionCommand:
+        chapter = _chapter_or_all(params.get("chapter", "all"))
+        return _command((script, chapter))
+
+    return build
+
+
+def _build_pipeline(params: Mapping[str, Any]) -> ActionCommand:
+    argv = ["run_pipeline.py"]
+    if _strict_bool(params.get("from_scratch"), "from_scratch"):
+        argv.append("--from-scratch")
+
+    phase = params.get("phase")
+    if phase is not None:
+        if phase not in {"foundation", "drafting", "revision", "export"}:
+            raise ValueError("phase must be foundation, drafting, revision, or export")
+        argv.extend(("--phase", phase))
+
+    max_cycles = params.get("max_cycles", 6)
+    if max_cycles:
+        argv.extend(("--max-cycles", str(_positive_int(max_cycles, "max_cycles"))))
+    return _command(argv)
+
+
+def _build_reset(params: Mapping[str, Any]) -> ActionCommand:
+    argv = ["reset_project.py"]
+    if _strict_bool(params.get("keep_seed"), "keep_seed"):
+        argv.append("--keep-seed")
+    return _command(argv)
+
+
+def _build_art_directions(params: Mapping[str, Any]) -> ActionCommand:
+    art_type = params.get("type", "cover")
+    if art_type not in {"cover", "ornament", "map", "scene-break"}:
+        raise ValueError("type must be cover, ornament, map, or scene-break")
+    return _command(("gen_art_directions.py", art_type))
+
+
+def _build_art(params: Mapping[str, Any]) -> ActionCommand:
+    subcommand = params.get("subcommand", "all")
+    if not isinstance(subcommand, str) or not subcommand:
+        raise ValueError("subcommand must be a non-empty string")
+    return _command(("gen_art.py", subcommand))
+
+
+def _build_brief(params: Mapping[str, Any]) -> ActionCommand:
+    chapter = params.get("chapter")
+    if chapter:
+        chapter = _positive_int(chapter, "chapter")
+        return _command(("gen_brief.py", "--panel", str(chapter)))
+    return _command(("gen_brief.py", "--auto"))
+
+
+def _build_optional_chapter_action(script: str) -> ActionBuilder:
+    def build(params: Mapping[str, Any]) -> ActionCommand:
+        chapter = params.get("chapter")
+        if chapter:
+            chapter = _positive_int(chapter, "chapter")
+            return _command((script, str(chapter)))
+        return _command((script,))
+
+    return build
+
+
+def _build_rewrite_chapter_beats(params: Mapping[str, Any]) -> ActionCommand:
+    chapter = _positive_int(params.get("chapter"), "chapter")
+    if chapter > 24:
+        raise ValueError("chapter must be between 1 and 24")
+    mode = params.get("mode")
+    if mode not in {"fresh", "revise"}:
+        raise ValueError("mode must be fresh or revise")
+    return _command(
+        ("rewrite_chapter_beats.py", str(chapter), f"--mode={mode}")
+    )
+
+
+def _build_run_drafts(params: Mapping[str, Any]) -> ActionCommand:
+    draft_all = _strict_bool(params.get("all"), "all")
+    overwrite = _strict_bool(params.get("overwrite"), "overwrite")
+    start = params.get("start")
+    end = params.get("end")
+
+    if draft_all:
+        if start is not None or end is not None:
+            raise ValueError("all cannot be combined with start or end")
+        argv = ["run_drafts.py", "--all"]
+    else:
+        if start is None or end is None:
+            raise ValueError("start and end are required when all is false")
+        start = _positive_int(start, "start")
+        end = _positive_int(end, "end")
+        if start > 24 or end > 24:
+            raise ValueError("start and end must be between 1 and 24")
+        if start > end:
+            raise ValueError("start must not be greater than end")
+        argv = ["run_drafts.py", f"--start={start}", f"--end={end}"]
+
+    if overwrite:
+        argv.append("--overwrite")
+    return _command(argv)
+
+
+ACTION_REGISTRY: dict[str, ActionBuilder] = {
+    "seed": _build_seed,
+    "gen_world": _simple_action("gen_world.py"),
+    "gen_characters": _simple_action("gen_characters.py"),
+    "gen_outline": _simple_action("gen_outline.py"),
+    "gen_outline_part2": _simple_action("gen_outline_part2.py"),
+    "gen_canon": _simple_action("gen_canon.py"),
+    "voice_fingerprint": _simple_action("voice_fingerprint.py"),
+    "draft_chapter": _build_chapter_action("draft_chapter.py"),
+    "evaluate_foundation": _simple_action("evaluate.py", "--phase=foundation"),
+    "evaluate_chapter": _build_evaluate_chapter,
+    "evaluate_full": _simple_action("evaluate.py", "--full"),
+    "adversarial_edit": _build_all_or_chapter_action("adversarial_edit.py"),
+    "compare_chapters": _simple_action("compare_chapters.py"),
+    "reader_panel": _simple_action("reader_panel.py"),
+    "review": _simple_action("review.py"),
+    "run_pipeline": _build_pipeline,
+    "reset": _build_reset,
+    "build_tex": _simple_action("typeset/build_tex.py"),
+    "gen_art_style": _simple_action("gen_art.py", "style"),
+    "gen_art_directions": _build_art_directions,
+    "gen_art": _build_art,
+    "apply_cuts": _build_all_or_chapter_action("apply_cuts.py"),
+    "gen_brief": _build_brief,
+    "gen_revision": _build_chapter_action("gen_revision.py"),
+    "gen_audiobook_script": _build_optional_chapter_action(
+        "gen_audiobook_script.py"
+    ),
+    "rewrite_chapter_beats": _build_rewrite_chapter_beats,
+    "run_drafts": _build_run_drafts,
+}
+
+
+async def run_command_stream(argv: Sequence[str], display_cmd: str):
+    """Execute an allowlisted script argv and stream output over WebSocket."""
     job_state.is_running = True
-    job_state.current_cmd = cmd
+    job_state.current_cmd = display_cmd
     job_state.logs.clear()
     
     await manager.broadcast({
         "type": "job_start",
-        "cmd": cmd,
+        "cmd": display_cmd,
     })
 
     try:
@@ -976,18 +1183,14 @@ async def run_command_stream(cmd: str):
         env["PYTHONIOENCODING"] = "utf-8"
         env["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
         
-        # cmd might be 'gen_world.py' or 'evaluate.py --full'. We need to make the script path absolute.
-        # It assumes the first word is the python script if it ends in .py
-        cmd_parts = cmd.split(" ", 1)
-        script_name = cmd_parts[0]
-        args = cmd_parts[1] if len(cmd_parts) > 1 else ""
         script_dir = Path(__file__).resolve().parent
-        absolute_script = script_dir / script_name
-        
-        full_cmd = f'"{sys.executable}" -u "{absolute_script}" {args}'
+        absolute_script = script_dir / argv[0]
 
-        process = await asyncio.create_subprocess_shell(
-            full_cmd,
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-u",
+            str(absolute_script),
+            *argv[1:],
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(PROJECT_DIR),
@@ -1011,7 +1214,7 @@ async def run_command_stream(cmd: str):
         await manager.broadcast({
             "type": "job_end",
             "returncode": returncode,
-            "cmd": cmd,
+            "cmd": display_cmd,
         })
     except Exception as e:
         err_msg = f"\nError executing process: {str(e)}\n"
@@ -1023,7 +1226,7 @@ async def run_command_stream(cmd: str):
         await manager.broadcast({
             "type": "job_end",
             "returncode": -1,
-            "cmd": cmd,
+            "cmd": display_cmd,
         })
     finally:
         job_state.is_running = False
@@ -1036,102 +1239,23 @@ async def api_run_action(req: RunActionRequest, background_tasks: BackgroundTask
     if job_state.is_running:
         raise HTTPException(status_code=400, detail="A job is already running")
 
-    action = req.action
-    params = req.params
+    builder = ACTION_REGISTRY.get(req.action)
+    if builder is None:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+    try:
+        command = builder(req.params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    cmd = ""
-    if action == "seed":
-        count = params.get("count", 10)
-        riff = params.get("riff")
-        if riff:
-            cmd = f'seed.py --riff "{riff}"'
-        else:
-            cmd = f"seed.py --count {count}"
-    elif action == "gen_world":
-        cmd = "gen_world.py"
-    elif action == "gen_characters":
-        cmd = "gen_characters.py"
-    elif action == "gen_outline":
-        cmd = "gen_outline.py"
-    elif action == "gen_outline_part2":
-        cmd = "gen_outline_part2.py"
-    elif action == "gen_canon":
-        cmd = "gen_canon.py"
-    elif action == "voice_fingerprint":
-        cmd = "voice_fingerprint.py"
-    elif action == "draft_chapter":
-        ch_num = params.get("chapter", 1)
-        cmd = f"draft_chapter.py {ch_num}"
-    elif action == "evaluate_foundation":
-        cmd = "evaluate.py --phase=foundation"
-    elif action == "evaluate_chapter":
-        ch_num = params.get("chapter", 1)
-        cmd = f"evaluate.py --chapter={ch_num}"
-    elif action == "evaluate_full":
-        cmd = "evaluate.py --full"
-    elif action == "adversarial_edit":
-        ch = params.get("chapter", "all")
-        cmd = f"adversarial_edit.py {ch}"
-    elif action == "compare_chapters":
-        cmd = "compare_chapters.py"
-    elif action == "reader_panel":
-        cmd = "reader_panel.py"
-    elif action == "review":
-        cmd = "review.py"
-    elif action == "run_pipeline":
-        phase = params.get("phase")
-        from_scratch = params.get("from_scratch", False)
-        max_cycles = params.get("max_cycles", 6)
-        args = []
-        if from_scratch:
-            args.append("--from-scratch")
-        if phase:
-            args.append(f"--phase {phase}")
-        if max_cycles:
-            args.append(f"--max-cycles {max_cycles}")
-        cmd = f"run_pipeline.py {' '.join(args)}"
-    elif action == "reset":
-        keep_seed = params.get("keep_seed", False)
-        args = []
-        if keep_seed:
-            args.append("--keep-seed")
-        cmd = f"reset_project.py {' '.join(args)}".strip()
-    elif action == "build_tex":
-        cmd = "typeset/build_tex.py"
-    elif action == "gen_art_style":
-        cmd = "gen_art.py style"
-    elif action == "gen_art_directions":
-        art_type = params.get("type", "cover")
-        cmd = f"gen_art_directions.py {art_type}"
-    elif action == "gen_art":
-        subcmd = params.get("subcommand", "all")
-        cmd = f"gen_art.py {subcmd}"
-    elif action == "apply_cuts":
-        ch = params.get("chapter", "all")
-        cmd = f"apply_cuts.py {ch}"
-    elif action == "gen_brief":
-        ch = params.get("chapter")
-        if ch:
-            cmd = f"gen_brief.py --panel {ch}"
-        else:
-            cmd = "gen_brief.py --auto"
-    elif action == "gen_revision":
-        ch = params.get("chapter", 1)
-        cmd = f"gen_revision.py {ch}"
-    elif action == "gen_audiobook_script":
-        ch = params.get("chapter")
-        if ch:
-            cmd = f"gen_audiobook_script.py {ch}"
-        else:
-            cmd = "gen_audiobook_script.py"
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
-
-
-
-
-    background_tasks.add_task(run_command_stream, cmd)
-    return {"status": "started", "cmd": cmd}
+    # Reserve the single process slot before the background task starts so two
+    # concurrent requests cannot both pass the availability check.
+    job_state.is_running = True
+    try:
+        background_tasks.add_task(run_command_stream, command.argv, command.display)
+    except Exception:
+        job_state.is_running = False
+        raise
+    return {"status": "started", "cmd": command.display}
 
 
 @app.post("/api/actions/stop")
