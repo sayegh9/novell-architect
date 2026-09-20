@@ -337,7 +337,7 @@ class ActionApiTests(unittest.IsolatedAsyncioTestCase):
             env=unittest.mock.ANY,
         )
         self.assertEqual(server.job_state.current_cmd, display)
-        self.assertEqual(server.job_state.logs, ["first line\n"])
+        self.assertEqual(list(server.job_state.logs), ["first line\n"])
         broadcast.assert_any_await({"type": "job_start", "cmd": display})
         broadcast.assert_any_await(
             {"type": "job_end", "returncode": 0, "cmd": display}

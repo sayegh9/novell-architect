@@ -18,6 +18,7 @@ import glob
 import re
 import signal
 import statistics
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from file_utils import atomic_write_text
 from outline_utils import find_chapter_outline, replace_chapter_outline
 from settings import (
     DEFAULT_PROJECT_SETTINGS,
@@ -120,12 +122,42 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # Global Process Execution State
+DEFAULT_JOB_LOG_MAX_LINES = 2000
+
+
+def get_job_log_max_lines(environment: Optional[Mapping[str, str]] = None) -> int:
+    environment = os.environ if environment is None else environment
+    configured = environment.get("AUTONOVEL_JOB_LOG_MAX_LINES", "").strip()
+    if not configured:
+        return DEFAULT_JOB_LOG_MAX_LINES
+    try:
+        limit = int(configured)
+    except ValueError:
+        print(
+            "Invalid AUTONOVEL_JOB_LOG_MAX_LINES; using "
+            f"{DEFAULT_JOB_LOG_MAX_LINES}",
+            file=sys.stderr,
+        )
+        return DEFAULT_JOB_LOG_MAX_LINES
+    if limit < 1:
+        print(
+            "AUTONOVEL_JOB_LOG_MAX_LINES must be positive; using "
+            f"{DEFAULT_JOB_LOG_MAX_LINES}",
+            file=sys.stderr,
+        )
+        return DEFAULT_JOB_LOG_MAX_LINES
+    return limit
+
+
 class JobState:
-    def __init__(self):
+    def __init__(self, max_log_lines: Optional[int] = None):
         self.is_running = False
         self.current_cmd = ""
         self.current_process: Optional[asyncio.subprocess.Process] = None
-        self.logs: List[str] = []
+        limit = get_job_log_max_lines() if max_log_lines is None else max_log_lines
+        if limit < 1:
+            raise ValueError("max_log_lines must be positive")
+        self.logs: deque[str] = deque(maxlen=limit)
 
 job_state = JobState()
 
@@ -133,6 +165,19 @@ job_state = JobState()
 # ============================================================================
 # Helpers
 # ============================================================================
+
+def _write_core_text(
+    path: Path,
+    content: str,
+    *,
+    newline: Optional[str] = None,
+) -> None:
+    try:
+        atomic_write_text(path, content, encoding="utf-8", newline=newline)
+    except OSError as exc:
+        detail = f"Failed to save {path.name}: {exc}"
+        print(detail, file=sys.stderr)
+        raise HTTPException(status_code=500, detail=detail) from exc
 
 def get_state() -> dict:
     state_file = PROJECT_DIR / "state.json"
@@ -144,16 +189,16 @@ def get_state() -> dict:
                 for k, v in nested.items():
                     if k not in data:
                         data[k] = v
-                state_file.write_text(json.dumps(data, indent=2))
+                atomic_write_text(state_file, json.dumps(data, indent=2))
             chapters_dir = PROJECT_DIR / "chapters"
             actual_count = len(list(chapters_dir.glob("ch_*.md"))) if chapters_dir.exists() else 0
             if actual_count == 0 and data.get("chapters_drafted", 0) > 0:
                 data["chapters_drafted"] = 0
                 data["phase"] = "foundation"
-                state_file.write_text(json.dumps(data, indent=2))
+                atomic_write_text(state_file, json.dumps(data, indent=2))
             elif data.get("chapters_drafted", 0) > actual_count:
                 data["chapters_drafted"] = actual_count
-                state_file.write_text(json.dumps(data, indent=2))
+                atomic_write_text(state_file, json.dumps(data, indent=2))
 
             # Auto-sync foundation_score if 0.0 or unset from latest foundation eval log
             if float(data.get("foundation_score", 0.0)) == 0.0:
@@ -171,13 +216,16 @@ def get_state() -> dict:
                                 data["lore_score"] = float(f_data["lore_score"])
                                 updated = True
                             if updated:
-                                state_file.write_text(json.dumps(data, indent=2))
-                        except Exception:
-                            pass
+                                atomic_write_text(state_file, json.dumps(data, indent=2))
+                        except Exception as exc:
+                            print(
+                                f"Failed to sync {state_file} from {f_logs[0]}: {exc}",
+                                file=sys.stderr,
+                            )
 
             return data
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"Failed to read or update {state_file}: {exc}", file=sys.stderr)
     return {
         "phase": "foundation",
 
@@ -300,7 +348,7 @@ def api_save_file(filename: str, req: SaveFileRequest):
     """Save content to a planning document."""
     safe_filename = Path(filename).name
     p = PROJECT_DIR / safe_filename
-    p.write_text(req.content)
+    _write_core_text(p, req.content)
     return {"status": "saved", "filename": safe_filename, "size": len(req.content)}
 
 
@@ -342,7 +390,7 @@ def api_save_chapter(ch_num: int, req: SaveChapterRequest):
     chapters_dir = PROJECT_DIR / "chapters"
     chapters_dir.mkdir(exist_ok=True)
     ch_path = chapters_dir / f"ch_{ch_num:02d}.md"
-    ch_path.write_text(req.content)
+    _write_core_text(ch_path, req.content)
     return {
         "status": "saved",
         "chapter": ch_num,
@@ -403,10 +451,8 @@ def api_save_chapter_beats(ch_num: int, req: SaveChapterBeatsRequest):
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = backup_dir / f"outline_{timestamp}.md"
-    with backup_path.open("w", encoding="utf-8", newline="") as backup_file:
-        backup_file.write(outline_text)
-    with outline_path.open("w", encoding="utf-8", newline="") as outline_file:
-        outline_file.write(updated_outline)
+    _write_core_text(backup_path, outline_text, newline="")
+    _write_core_text(outline_path, updated_outline, newline="")
 
     saved_beats = find_chapter_outline(updated_outline, ch_num)
     return {
@@ -578,7 +624,7 @@ def api_apply_cuts_custom(req: ApplyCutsCustomRequest):
                 failed += 1
 
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    ch_path.write_text(text, encoding="utf-8")
+    _write_core_text(ch_path, text)
     new_words = len(text.split())
 
     return {
@@ -639,7 +685,7 @@ def api_save_brief_single(ch_num: int, req: SaveBriefRequest):
     briefs_dir = PROJECT_DIR / "briefs"
     briefs_dir.mkdir(exist_ok=True, parents=True)
     target = briefs_dir / f"ch_{ch_num:02d}_brief.md"
-    target.write_text(req.content, encoding="utf-8")
+    _write_core_text(target, req.content)
     return {"status": "saved", "chapter": ch_num, "filename": target.name}
 
 
@@ -844,6 +890,7 @@ def api_update_settings(req: SettingsUpdateRequest):
     env_content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
     lines = env_content.splitlines()
     env_map = {}
+    runtime_updates = {}
 
     for l in lines:
         if "=" in l and not l.strip().startswith("#"):
@@ -852,35 +899,46 @@ def api_update_settings(req: SettingsUpdateRequest):
 
     if req.writer_model is not None:
         env_map["AUTONOVEL_WRITER_MODEL"] = req.writer_model
-        os.environ["AUTONOVEL_WRITER_MODEL"] = req.writer_model
+        runtime_updates["AUTONOVEL_WRITER_MODEL"] = req.writer_model
     if req.judge_model is not None:
         env_map["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
-        os.environ["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
+        runtime_updates["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
     if req.temperature is not None:
         env_map["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
-        os.environ["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
+        runtime_updates["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
     if req.target_words is not None:
         env_map["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
-        os.environ["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
+        runtime_updates["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
     if req.language is not None:
         env_map["AUTONOVEL_LANGUAGE"] = req.language
-        os.environ["AUTONOVEL_LANGUAGE"] = req.language
+        runtime_updates["AUTONOVEL_LANGUAGE"] = req.language
     if req.novel_type is not None:
         env_map["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
-        os.environ["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
+        runtime_updates["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
 
     new_lines = []
     for k, v in env_map.items():
         new_lines.append(f"{k}={v}")
 
     try:
-        env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-    except Exception as e:
-        print(f"Note: .env update skipped ({e}), updating settings.json and os.environ")
+        atomic_write_text(env_file, "\n".join(new_lines) + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"Note: .env update skipped ({e}), trying settings.json fallback")
         # Save to settings.json
         settings_file = PROJECT_DIR / "settings.json"
-        settings_file.write_text(json.dumps(env_map, indent=2), encoding="utf-8")
+        try:
+            atomic_write_text(
+                settings_file, json.dumps(env_map, indent=2), encoding="utf-8"
+            )
+        except OSError as fallback_error:
+            detail = (
+                f"Failed to save settings to {env_file.name} ({e}) or "
+                f"{settings_file.name} ({fallback_error})"
+            )
+            print(detail, file=sys.stderr)
+            raise HTTPException(status_code=500, detail=detail) from fallback_error
 
+    os.environ.update(runtime_updates)
     return {"status": "updated", "settings": api_get_settings()}
 
 
@@ -1374,7 +1432,7 @@ def api_get_logs():
     return {
         "is_running": job_state.is_running,
         "cmd": job_state.current_cmd,
-        "logs": job_state.logs,
+        "logs": list(job_state.logs),
     }
 
 
@@ -1391,7 +1449,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "connected",
             "is_running": job_state.is_running,
             "cmd": job_state.current_cmd,
-            "logs_preview": job_state.logs[-50:] if job_state.logs else [],
+            "logs_preview": list(job_state.logs)[-50:],
         })
         while True:
             # Keepalive / ping-pong
@@ -1543,14 +1601,14 @@ def api_create_project(req: CreateProjectRequest):
     p_dir.mkdir()
     
     # Initialize basic files
-    (p_dir / "seed.txt").write_text("", encoding="utf-8")
+    _write_core_text(p_dir / "seed.txt", "")
     default_state = {
         "phase": "foundation", "current_focus": "planning", "iteration": 0,
         "foundation_score": 0.0, "lore_score": 0.0, "chapters_drafted": 0,
         "chapters_total": 24, "novel_score": 0.0, "revision_cycle": 0, "debts": [],
         "novel_type": "novel"
     }
-    (p_dir / "state.json").write_text(json.dumps(default_state, indent=2), encoding="utf-8")
+    _write_core_text(p_dir / "state.json", json.dumps(default_state, indent=2))
     
     try:
         import subprocess
