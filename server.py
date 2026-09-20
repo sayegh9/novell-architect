@@ -32,10 +32,16 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from outline_utils import find_chapter_outline, replace_chapter_outline
+from settings import (
+    DEFAULT_PROJECT_SETTINGS,
+    child_process_environment,
+    rebuild_runtime_settings,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
 load_dotenv(SCRIPT_DIR / ".env", override=True)
+rebuild_runtime_settings(PROJECT_DIR)
 
 app = FastAPI(title="Autonovel Studio API", version="1.0.0")
 
@@ -747,25 +753,32 @@ def api_get_analytics():
 @app.get("/api/settings")
 def api_get_settings():
     """Get active engine model and temperature configuration."""
-    from language_utils import detect_project_language
-    settings_file = PROJECT_DIR / "settings.json"
-    if settings_file.exists():
-        try:
-            stored = json.loads(settings_file.read_text(encoding="utf-8"))
-            for k, v in stored.items():
-                if k not in os.environ:
-                    os.environ[k] = str(v)
-        except Exception:
-            pass
-
     return {
-        "writer_model": os.environ.get("AUTONOVEL_WRITER_MODEL", "gemini-3.7-flash"),
-        "judge_model": os.environ.get("AUTONOVEL_JUDGE_MODEL", "gemini-3.7-flash"),
-        "review_model": os.environ.get("AUTONOVEL_REVIEW_MODEL", "gemini-3.7-flash"),
-        "temperature": float(os.environ.get("AUTONOVEL_TEMPERATURE", "0.75")),
-        "target_words": int(os.environ.get("AUTONOVEL_TARGET_WORDS", "3500")),
-        "language": os.environ.get("AUTONOVEL_LANGUAGE", detect_project_language()),
-        "novel_type": os.environ.get("AUTONOVEL_NOVEL_TYPE", "novel"),
+        "writer_model": os.environ.get(
+            "AUTONOVEL_WRITER_MODEL", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_WRITER_MODEL"]
+        ),
+        "judge_model": os.environ.get(
+            "AUTONOVEL_JUDGE_MODEL", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_JUDGE_MODEL"]
+        ),
+        "review_model": os.environ.get(
+            "AUTONOVEL_REVIEW_MODEL", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_REVIEW_MODEL"]
+        ),
+        "temperature": float(
+            os.environ.get(
+                "AUTONOVEL_TEMPERATURE", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_TEMPERATURE"]
+            )
+        ),
+        "target_words": int(
+            os.environ.get(
+                "AUTONOVEL_TARGET_WORDS", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_TARGET_WORDS"]
+            )
+        ),
+        "language": os.environ.get(
+            "AUTONOVEL_LANGUAGE", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_LANGUAGE"]
+        ),
+        "novel_type": os.environ.get(
+            "AUTONOVEL_NOVEL_TYPE", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_NOVEL_TYPE"]
+        ),
         "has_gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
         "has_anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
     }
@@ -1220,7 +1233,7 @@ async def run_command_stream(argv: Sequence[str], display_cmd: str):
     })
 
     try:
-        env = os.environ.copy()
+        env = child_process_environment(PROJECT_DIR)
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
         env["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
@@ -1529,18 +1542,7 @@ def api_set_active_project(req: SetActiveProjectRequest):
         new_dir = resolve_project_path(req.id)
             
     PROJECT_DIR = new_dir.resolve()
-    os.environ["AUTONOVEL_PROJECT_DIR"] = str(PROJECT_DIR)
-    
-    # Apply settings from the new project to environ
-    settings_file = PROJECT_DIR / "settings.json"
-    if settings_file.exists():
-        try:
-            import json
-            settings = json.loads(settings_file.read_text(encoding="utf-8"))
-            for k, v in settings.items():
-                os.environ[k] = str(v)
-        except Exception:
-            pass
+    rebuild_runtime_settings(PROJECT_DIR)
             
     ORCHESTRATOR_LOG_PATH = PROJECT_DIR / "autonovel-orchestrator.log"
     
