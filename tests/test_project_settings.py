@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import server
+import settings as project_settings
 
 
 MANAGED_SETTING_KEYS = (
@@ -17,6 +18,12 @@ MANAGED_SETTING_KEYS = (
     "AUTONOVEL_TARGET_WORDS",
     "AUTONOVEL_LANGUAGE",
     "AUTONOVEL_NOVEL_TYPE",
+)
+
+PROVIDER_API_KEYS = (
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "ANTHROPIC_API_KEY",
 )
 
 
@@ -48,15 +55,23 @@ class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
         self._original_log_path = getattr(server, "ORCHESTRATOR_LOG_PATH", None)
         self._original_environment = {
             key: os.environ.get(key)
-            for key in (*MANAGED_SETTING_KEYS, "AUTONOVEL_PROJECT_DIR", "GEMINI_API_KEY")
+            for key in (*MANAGED_SETTING_KEYS, "AUTONOVEL_PROJECT_DIR", *PROVIDER_API_KEYS)
         }
+        self._startup_provider_patch = patch.object(
+            project_settings,
+            "STARTUP_PROVIDER_ENVIRONMENT",
+            {},
+            create=True,
+        )
+        self._startup_provider_patch.start()
 
         server.SCRIPT_DIR = self.script_dir
         server.PROJECT_DIR = self.script_dir
         server.ORCHESTRATOR_LOG_PATH = self.script_dir / "autonovel-orchestrator.log"
         server.job_state.is_running = False
         server.job_state.current_process = None
-        os.environ["GEMINI_API_KEY"] = "global-provider-key"
+        for key in PROVIDER_API_KEYS:
+            os.environ.pop(key, None)
 
     def tearDown(self):
         server.SCRIPT_DIR = self._original_script_dir
@@ -72,6 +87,7 @@ class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        self._startup_provider_patch.stop()
         self._temp_dir.cleanup()
 
     def _make_project(self, project_id: str) -> Path:
@@ -131,27 +147,36 @@ class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         server.api_set_active_project(server.SetActiveProjectRequest(id="project-a"))
         settings_a = server.api_get_settings()
+        provider_key_a = os.environ.get("GEMINI_API_KEY")
         server.api_set_active_project(server.SetActiveProjectRequest(id="project-b"))
         settings_b = server.api_get_settings()
+        provider_key_b = os.environ.get("GEMINI_API_KEY")
         server.api_set_active_project(server.SetActiveProjectRequest(id="root"))
         settings_root = server.api_get_settings()
+        provider_key_root = os.environ.get("GEMINI_API_KEY")
 
         self.assertEqual(settings_a["writer_model"], "a-json-writer")
         self.assertEqual(settings_a["judge_model"], "a-env-judge")
         self.assertEqual(settings_a["temperature"], 0.2)
         self.assertEqual(settings_a["language"], "fr")
+        self.assertTrue(settings_a["has_gemini_key"])
+        self.assertNotIn("GEMINI_API_KEY", settings_a)
+        self.assertEqual(provider_key_a, "project-a-provider-key")
 
         self.assertEqual(settings_b["writer_model"], "b-env-writer")
         self.assertEqual(settings_b["judge_model"], "gemini-3.7-flash")
         self.assertEqual(settings_b["temperature"], 0.75)
         self.assertEqual(settings_b["target_words"], 2100)
         self.assertEqual(settings_b["language"], "ar")
+        self.assertFalse(settings_b["has_gemini_key"])
+        self.assertIsNone(provider_key_b)
 
         self.assertEqual(settings_root["writer_model"], "root-env-writer")
         self.assertEqual(settings_root["judge_model"], "gemini-3.7-flash")
         self.assertEqual(settings_root["target_words"], 3500)
         self.assertEqual(settings_root["language"], "es")
-        self.assertEqual(os.environ["GEMINI_API_KEY"], "global-provider-key")
+        self.assertTrue(settings_root["has_gemini_key"])
+        self.assertEqual(provider_key_root, "root-settings-provider-key")
 
     async def test_child_environment_uses_only_the_active_project_settings(self):
         self._write_settings(
@@ -159,6 +184,7 @@ class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
             {
                 "AUTONOVEL_WRITER_MODEL": "a-writer",
                 "AUTONOVEL_JUDGE_MODEL": "a-judge",
+                "GEMINI_API_KEY": "project-a-provider-key",
             },
         )
         self._write_env(
@@ -189,7 +215,39 @@ class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child_env["AUTONOVEL_NOVEL_TYPE"], "novella")
         self.assertNotIn("a-writer", child_env.values())
         self.assertNotIn("a-judge", child_env.values())
-        self.assertEqual(child_env["GEMINI_API_KEY"], "global-provider-key")
+        self.assertNotIn("GEMINI_API_KEY", child_env)
+
+    async def test_project_provider_key_falls_back_to_startup_global_for_b_and_child(self):
+        project_settings.STARTUP_PROVIDER_ENVIRONMENT = {
+            "GEMINI_API_KEY": "startup-global-provider-key"
+        }
+        os.environ["GEMINI_API_KEY"] = "startup-global-provider-key"
+        self._write_env(
+            self.project_a,
+            {"GEMINI_API_KEY": "project-a-provider-key"},
+        )
+
+        server.api_set_active_project(server.SetActiveProjectRequest(id="project-a"))
+        provider_key_a = os.environ.get("GEMINI_API_KEY")
+        server.api_set_active_project(server.SetActiveProjectRequest(id="project-b"))
+        provider_key_b = os.environ.get("GEMINI_API_KEY")
+
+        with (
+            patch.object(
+                server.asyncio,
+                "create_subprocess_exec",
+                AsyncMock(return_value=_CompletedProcess()),
+            ) as create_process,
+            patch.object(server.manager, "broadcast", AsyncMock()),
+        ):
+            await server.run_command_stream(("draft_chapter.py", "1"), "draft_chapter.py 1")
+
+        child_env = create_process.await_args.kwargs["env"]
+        self.assertEqual(provider_key_a, "project-a-provider-key")
+        self.assertEqual(provider_key_b, "startup-global-provider-key")
+        self.assertEqual(
+            child_env["GEMINI_API_KEY"], "startup-global-provider-key"
+        )
 
 
 if __name__ == "__main__":

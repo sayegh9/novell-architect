@@ -5,14 +5,15 @@ when an active project does not define a managed setting.  Project
 ``settings.json`` values are loaded first and ``.env`` values take precedence,
 because ``.env`` is the primary settings store used by the server.
 
-Provider API keys are deliberately not project settings: they are preserved if
-already present in the process environment and may only be filled from project
-configuration when no process-level credential exists.
+Provider API keys use a separate immutable startup snapshot plus the active
+project's overlay. This preserves process-level credentials without allowing a
+credential loaded from one project to leak into the next project.
 """
 
 import json
 import os
 from pathlib import Path
+from types import MappingProxyType
 from typing import Mapping, MutableMapping, Optional
 
 from dotenv import dotenv_values
@@ -33,6 +34,12 @@ PROVIDER_API_KEYS = (
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
     "ANTHROPIC_API_KEY",
+)
+
+# Capture only credentials supplied to the server process. Project files are
+# loaded later and therefore cannot become part of this fallback baseline.
+STARTUP_PROVIDER_ENVIRONMENT: Mapping[str, str] = MappingProxyType(
+    {key: os.environ[key] for key in PROVIDER_API_KEYS if key in os.environ}
 )
 
 
@@ -74,6 +81,14 @@ def active_project_settings(project_dir: Path) -> dict[str, str]:
     return active
 
 
+def active_provider_environment(project_dir: Path) -> dict[str, str]:
+    """Return startup credentials overlaid by the selected project only."""
+    active = dict(STARTUP_PROVIDER_ENVIRONMENT)
+    stored = read_project_configuration(project_dir)
+    active.update({key: stored[key] for key in PROVIDER_API_KEYS if key in stored})
+    return active
+
+
 def rebuild_runtime_settings(
     project_dir: Path,
     environ: Optional[MutableMapping[str, str]] = None,
@@ -84,10 +99,9 @@ def rebuild_runtime_settings(
     target.update(active)
     target["AUTONOVEL_PROJECT_DIR"] = str(project_dir)
 
-    stored = read_project_configuration(project_dir)
     for key in PROVIDER_API_KEYS:
-        if key in stored:
-            target.setdefault(key, stored[key])
+        target.pop(key, None)
+    target.update(active_provider_environment(project_dir))
     return active
 
 
