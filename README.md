@@ -52,6 +52,34 @@ PORT=8080 uv run python server.py
 
 ---
 
+## Quality Checks
+
+Run the full local quality gate before sending a change for review. It runs the
+offline Python suite with provider credentials removed, compiles the Python
+application, and builds the Studio UI:
+
+```bash
+env -u GEMINI_API_KEY -u GOOGLE_API_KEY -u ANTHROPIC_API_KEY uv run python -m unittest discover -s tests && uv run python -m compileall -q *.py tests && npm --prefix ui run build -- --outDir /tmp/autonovel-ui-build
+```
+
+The default Python test command is intentionally offline and never selects a
+provider test:
+
+```bash
+uv run python -m unittest discover -s tests
+```
+
+To run the optional live provider smoke test, set an API key and explicitly
+opt in. This test sends a real evaluation request and may incur provider cost:
+
+```bash
+AUTONOVEL_RUN_LIVE_TESTS=1 GEMINI_API_KEY=... uv run python tests/live_provider_eval.py
+```
+
+Use `ANTHROPIC_API_KEY=...` instead when validating the Anthropic provider.
+
+---
+
 ## The Pipeline
 
 ### Phase 1: Foundation

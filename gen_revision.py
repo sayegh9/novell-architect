@@ -14,7 +14,7 @@ BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve()
 load_dotenv(BASE_DIR / ".env")
 
 from llm import call_writer as _call_writer
-from language_utils import detect_project_language, get_arabic_writer_system_prompt, get_english_writer_system_prompt, clean_chapter_text
+from language_utils import clean_chapter_text, detect_project_language, load_prompt
 
 CHAPTERS_DIR = BASE_DIR / "chapters"
 BRIEFS_DIR = BASE_DIR / "briefs"
