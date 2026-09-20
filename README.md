@@ -50,6 +50,27 @@ cd ui && npm install && npm run build && cd ..
 PORT=8080 uv run python server.py
 ```
 
+### Studio network exposure
+
+The backend binds to `127.0.0.1` by default, so the Studio is local-only. The
+production UI is served by the backend and uses the same origin; when running
+the Vite development server, the default allowed origins are
+`http://localhost:5173` and `http://127.0.0.1:5173`.
+
+To make the Studio reachable from another device, explicitly configure both
+the bind address and the exact browser origin(s) that may call the API:
+
+```bash
+AUTONOVEL_HOST=0.0.0.0 \
+AUTONOVEL_CORS_ORIGINS=https://studio.example.com \
+PORT=8080 uv run python server.py
+```
+
+Treat this as a network service once `AUTONOVEL_HOST` is not loopback. Remote
+mutation access must be protected with authentication and CSRF protection
+before exposure; CORS is not an authentication or authorization boundary.
+Never use `*` for `AUTONOVEL_CORS_ORIGINS`.
+
 ---
 
 ## Quality Checks

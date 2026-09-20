@@ -43,12 +43,55 @@ PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve(
 load_dotenv(SCRIPT_DIR / ".env", override=True)
 rebuild_runtime_settings(PROJECT_DIR)
 
+DEFAULT_SERVER_HOST = "127.0.0.1"
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+
+def get_server_host(environment: Optional[Mapping[str, str]] = None) -> str:
+    """Return the configured bind address, defaulting to local-only access."""
+    environment = os.environ if environment is None else environment
+    return environment.get("AUTONOVEL_HOST", "").strip() or DEFAULT_SERVER_HOST
+
+
+def get_cors_origins(environment: Optional[Mapping[str, str]] = None) -> List[str]:
+    """Return explicit CORS origins for Studio development or remote hosting.
+
+    A wildcard origin is intentionally rejected because this API accepts
+    mutations and enables credentials for compatibility with authenticated
+    deployments.
+    """
+    environment = os.environ if environment is None else environment
+    configured = environment.get("AUTONOVEL_CORS_ORIGINS", "")
+    if not configured.strip():
+        return list(DEFAULT_CORS_ORIGINS)
+
+    origins = []
+    for value in configured.split(","):
+        origin = value.strip().rstrip("/")
+        if not origin:
+            continue
+        if origin == "*":
+            raise ValueError(
+                "AUTONOVEL_CORS_ORIGINS must list explicit origins; wildcard is not allowed"
+            )
+        if origin not in origins:
+            origins.append(origin)
+
+    if not origins:
+        return list(DEFAULT_CORS_ORIGINS)
+    return origins
+
+
 app = FastAPI(title="Autonovel Studio API", version="1.0.0")
 
-# Enable CORS for local development (e.g. Vite on port 5173)
+# Allow the local Vite development server. The production UI is served by this
+# app and is same-origin, so it does not require CORS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1572,8 +1615,9 @@ if ui_dist.exists():
 
 def main():
     port = int(os.environ.get("PORT", 8000))
-    print(f"Starting Autonovel Studio Backend on http://127.0.0.1:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    host = get_server_host()
+    print(f"Starting Autonovel Studio Backend on http://{host}:{port}")
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 if __name__ == "__main__":
     main()
