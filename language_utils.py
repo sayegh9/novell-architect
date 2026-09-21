@@ -38,10 +38,11 @@ def detect_project_language() -> str:
     return "en"
 
 def load_prompt(template_name: str) -> str:
-    """Load a prompt template from the prompts directory based on the project language."""
+    """Load a project override or the packaged template for its language."""
     lang = detect_project_language()
     prompt_path = BASE_DIR / "prompts" / lang / f"{template_name}.txt"
-    
+    if not prompt_path.exists():
+        prompt_path = Path(__file__).resolve().parent / "prompts" / lang / f"{template_name}.txt"
     if not prompt_path.exists():
         raise FileNotFoundError(f"Prompt template {template_name}.txt not found for language '{lang}' at {prompt_path}")
         

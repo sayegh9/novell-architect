@@ -153,10 +153,25 @@ def replace_chapter_outline(
         )
 
     selected_heading = matches[0]
+    if replacement_heading.level != selected_heading.level:
+        raise ValueError("Chapter beats must preserve the original heading level")
     section_end = _heading_section_end(outline_text, selected_heading)
+    if any(
+        selected_heading.start < heading.start < section_end
+        for heading in _chapter_headings(outline_text)
+    ):
+        raise ValueError("Chapter section contains another chapter; repair its heading level first")
     suffix = outline_text[section_end:]
     separator = "\n\n" if suffix else "\n"
-    return outline_text[: selected_heading.start] + normalized + separator + suffix
+    updated = outline_text[: selected_heading.start] + normalized + separator + suffix
+    updated_heading = next(
+        heading for heading in _chapter_headings(updated)
+        if heading.chapter_num == chapter_num
+    )
+    expected_end = selected_heading.start + len(normalized) + len(separator)
+    if _heading_section_end(updated, updated_heading) != expected_end:
+        raise ValueError("Chapter beats must preserve neighboring section boundaries")
+    return updated
 
 
 def extract_next_chapter_outline(outline_text: str, chapter_num: int) -> str:

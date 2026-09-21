@@ -1,6 +1,9 @@
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -168,6 +171,8 @@ The gate opens.
             ("", "must not be empty"),
             ("- A heading-free list item", "heading"),
             ("## Chapter 2: Wrong chapter\n- Wrong.", "Chapter 1"),
+            ("# Chapter 1: Promoted\n- Wrong depth.", "heading level"),
+            ("### Chapter 1: Demoted\n- Wrong depth.", "heading level"),
             (
                 "## Chapter 1: Duplicate\n- First.\n## Chapter 1: Again\n- Second.",
                 "exactly one",
@@ -182,6 +187,52 @@ The gate opens.
                 self.assertIn(expected_detail, response.json()["detail"])
                 self.assertEqual(outline_path.read_text(encoding="utf-8"), OUTLINE)
                 self.assertFalse((self.project_dir / "outline_backups").exists())
+
+    def test_concurrent_chapter_saves_preserve_both_edits_and_serial_backups(self):
+        outline_path = self.write_outline()
+        first_read = Event()
+        second_started = Event()
+        second_read = Event()
+        read_outline = server._read_outline_for_beats
+        first_beats = "## Chapter 1: Saved first\n- First concurrent edit."
+        second_beats = "## Ch 2: Saved second\n- Second concurrent edit."
+
+        def delayed_read(ch_num, *args, **kwargs):
+            result = read_outline(ch_num, *args, **kwargs)
+            if ch_num == 1:
+                first_read.set()
+                self.assertTrue(second_started.wait(5))
+                # Without serialization both requests read the original snapshot.
+                # With serialization the second reader waits for the first save.
+                second_read.wait(1)
+            else:
+                second_read.set()
+            return result
+
+        def save_second():
+            second_started.set()
+            return self.client.post("/api/chapters/2/beats", json={"beats": second_beats})
+
+        with patch.object(server, "_read_outline_for_beats", side_effect=delayed_read):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(
+                    self.client.post, "/api/chapters/1/beats", json={"beats": first_beats}
+                )
+                self.assertTrue(first_read.wait(5))
+                second = pool.submit(save_second)
+                responses = [first.result(timeout=10), second.result(timeout=10)]
+
+        self.assertEqual([response.status_code for response in responses], [200, 200])
+        updated = outline_path.read_text(encoding="utf-8")
+        self.assertIn(first_beats, updated)
+        self.assertIn(second_beats, updated)
+        backups = [
+            (self.project_dir / response.json()["backup"]).read_text(encoding="utf-8")
+            for response in responses
+        ]
+        self.assertEqual(backups[0], OUTLINE)
+        self.assertIn(first_beats, backups[1])
+        self.assertNotIn(second_beats, backups[1])
 
 
 if __name__ == "__main__":

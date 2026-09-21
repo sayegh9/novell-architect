@@ -15,6 +15,42 @@ def load_outline_utils():
 
 
 class OutlineExtractionTests(unittest.TestCase):
+    def test_replacement_rejects_heading_depth_changes(self):
+        outline_utils = load_outline_utils()
+        original = "## Chapter 1: One\n- First.\n## Chapter 2: Two\n- Second.\n"
+        for marks in ("#", "###"):
+            with self.subTest(marks=marks):
+                with self.assertRaisesRegex(ValueError, "heading level"):
+                    outline_utils.replace_chapter_outline(
+                        original, 1, f"{marks} Chapter 1: Changed\n- Updated."
+                    )
+
+    def test_replacement_rejects_existing_section_containing_another_chapter(self):
+        outline_utils = load_outline_utils()
+        original = "# Chapter 1: One\n- First.\n## Chapter 2: Two\n- Second.\n"
+        with self.assertRaisesRegex(ValueError, "another chapter"):
+            outline_utils.replace_chapter_outline(
+                original, 1, "# Chapter 1: Changed\n- Updated."
+            )
+
+    def test_repeated_replacements_preserve_neighboring_section_boundaries(self):
+        outline_utils = load_outline_utils()
+        original = "# Act One\n## Chapter 1: One\n- First.\n## Chapter 2: Two\n- Second.\n"
+        updated = outline_utils.replace_chapter_outline(
+            original, 1, "## Chapter 1: Changed\n### Note\n- Updated."
+        )
+        updated = outline_utils.replace_chapter_outline(
+            updated, 1, "## Chapter 1: Changed again\n- Final."
+        )
+        self.assertEqual(
+            updated,
+            "# Act One\n## Chapter 1: Changed again\n- Final.\n\n## Chapter 2: Two\n- Second.\n",
+        )
+        self.assertEqual(
+            outline_utils.find_chapter_outline(updated, 1),
+            "## Chapter 1: Changed again\n- Final.",
+        )
+
     def test_extracts_english_numeric_chapter_without_next_chapter(self):
         outline_utils = load_outline_utils()
         outline = """# Act One

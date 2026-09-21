@@ -8,19 +8,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
+SCRIPT_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
 CHAPTERS_DIR = BASE_DIR / "chapters"
 CHAPTERS_DIR.mkdir(parents=True, exist_ok=True)
 
 def run(cmd, timeout=600):
+    env = os.environ.copy()
+    env["AUTONOVEL_PROJECT_DIR"] = str(BASE_DIR)
     p = subprocess.Popen(
         cmd,
-        shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
         cwd=str(BASE_DIR),
+        env=env,
     )
     output = []
     try:
@@ -82,7 +85,7 @@ def main():
         
         # Run draft_chapter.py
 
-        cmd = f'"{sys.executable}" draft_chapter.py {ch}'
+        cmd = [sys.executable, str(SCRIPT_DIR / "draft_chapter.py"), str(ch)]
         out, rc = run(cmd, timeout=600)
         
         if rc != 0 or not ch_file.exists() or ch_file.stat().st_size < 100:
@@ -106,7 +109,7 @@ def main():
             continue
             
         print(f"  [+] Success: {word_count} words. Running evaluation...", flush=True)
-        eval_cmd = f'"{sys.executable}" evaluate.py --chapter={ch}'
+        eval_cmd = [sys.executable, str(SCRIPT_DIR / "evaluate.py"), f"--chapter={ch}"]
         eval_out, _ = run(eval_cmd, timeout=300)
         m_score = re.search(r'overall_score:\s*([\d.]+)', eval_out)
         score = float(m_score.group(1)) if m_score else 6.0
@@ -152,4 +155,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

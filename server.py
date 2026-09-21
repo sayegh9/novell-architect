@@ -22,6 +22,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 from typing import Optional, List, Dict, Any, Callable, Mapping, Sequence
 
@@ -402,13 +403,17 @@ class SaveChapterBeatsRequest(BaseModel):
     beats: str
 
 
-def _read_outline_for_beats(ch_num: int) -> tuple[Path, str]:
+_outline_locks: dict[Path, Any] = {}
+_outline_locks_guard = Lock()
+
+
+def _read_outline_for_beats(ch_num: int, project_dir: Path | None = None) -> tuple[Path, str]:
     if ch_num < 1:
         raise HTTPException(
             status_code=400, detail="Chapter number must be a positive integer"
         )
 
-    outline_path = PROJECT_DIR / "outline.md"
+    outline_path = (project_dir if project_dir is not None else PROJECT_DIR) / "outline.md"
     if not outline_path.is_file():
         raise HTTPException(status_code=404, detail="outline.md not found")
     with outline_path.open("r", encoding="utf-8", newline="") as outline_file:
@@ -439,26 +444,32 @@ def api_get_chapter_beats(ch_num: int):
 @app.post("/api/chapters/{ch_num}/beats")
 def api_save_chapter_beats(ch_num: int, req: SaveChapterBeatsRequest):
     """Replace one outline section after validation, preserving a full backup."""
-    outline_path, outline_text = _read_outline_for_beats(ch_num)
-    try:
-        updated_outline = replace_chapter_outline(outline_text, ch_num, req.beats)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Capture the project once: a concurrent project switch must not redirect
+    # the backup or the write halfway through this transaction.
+    project_dir = PROJECT_DIR
+    with _outline_locks_guard:
+        project_lock = _outline_locks.setdefault(project_dir.resolve(), Lock())
+    with project_lock:
+        outline_path, outline_text = _read_outline_for_beats(ch_num, project_dir)
+        try:
+            updated_outline = replace_chapter_outline(outline_text, ch_num, req.beats)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    backup_dir = PROJECT_DIR / "outline_backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    backup_path = backup_dir / f"outline_{timestamp}.md"
-    _write_core_text(backup_path, outline_text, newline="")
-    _write_core_text(outline_path, updated_outline, newline="")
+        backup_dir = project_dir / "outline_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup_path = backup_dir / f"outline_{timestamp}.md"
+        _write_core_text(backup_path, outline_text, newline="")
+        _write_core_text(outline_path, updated_outline, newline="")
 
-    saved_beats = find_chapter_outline(updated_outline, ch_num)
+        saved_beats = find_chapter_outline(updated_outline, ch_num)
     return {
         "status": "saved",
         "chapter": ch_num,
-        "backup": str(backup_path.relative_to(PROJECT_DIR)),
+        "backup": str(backup_path.relative_to(project_dir)),
         "beats": saved_beats,
     }
 
