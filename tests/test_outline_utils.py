@@ -15,6 +15,52 @@ def load_outline_utils():
 
 
 class OutlineExtractionTests(unittest.TestCase):
+    def test_extracts_inline_arabic_chapter_from_legacy_outline(self):
+        outline_utils = load_outline_utils()
+        outline = (
+            "الفصل 1: الخريف"
+            "الراوي والمكان: يحيى، القاهرة.   "
+            "المشاهد الأربعة: يصل الطرد."
+            "الفصل 2: الدليل"
+            "الراوي والمكان: هشام، بورسعيد.   "
+            "المشاهد الأربعة: يظهر القرط."
+        )
+
+        result = outline_utils.find_chapter_outline(outline, 1)
+
+        self.assertEqual(
+            result,
+            "## الفصل 1: الخريف\n\n"
+            "الراوي والمكان: يحيى، القاهرة.   "
+            "المشاهد الأربعة: يصل الطرد.",
+        )
+
+    def test_replaces_only_selected_inline_arabic_chapter_and_preserves_appendix(self):
+        outline_utils = load_outline_utils()
+        outline = (
+            "الفصل 1: الخريف"
+            "الراوي والمكان: يحيى، القاهرة.   "
+            "المشاهد الأربعة: يصل الطرد."
+            "الفصل 2: الدليل"
+            "الراوي والمكان: هشام، بورسعيد.   "
+            "المشاهد الأربعة: يظهر القرط."
+            "جدول الإشارات التمهيدية والمردود السردي :"
+            "خيط القرط: يُبذر في الفصل 2."
+        )
+        replacement = "## الفصل 2: الدليل\n\n### المشاهد\n1. يظهر القرط."
+
+        result = outline_utils.replace_chapter_outline(outline, 2, replacement)
+
+        self.assertEqual(
+            result,
+            "الفصل 1: الخريف"
+            "الراوي والمكان: يحيى، القاهرة.   "
+            "المشاهد الأربعة: يصل الطرد.\n\n"
+            "## الفصل 2: الدليل\n\n### المشاهد\n1. يظهر القرط.\n\n"
+            "جدول الإشارات التمهيدية والمردود السردي :"
+            "خيط القرط: يُبذر في الفصل 2.",
+        )
+
     def test_replacement_rejects_heading_depth_changes(self):
         outline_utils = load_outline_utils()
         original = "## Chapter 1: One\n- First.\n## Chapter 2: Two\n- Second.\n"

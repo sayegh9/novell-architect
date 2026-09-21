@@ -124,6 +124,46 @@ sys.modules["llm"] = llm
         )
         self.assertFalse((self.project_dir / "outline_backups").exists())
 
+    def test_generation_supports_inline_arabic_chapter_markers(self):
+        inline_outline = (
+            "الفصل 1: الخريف"
+            "الراوي والمكان: يحيى، القاهرة.   "
+            "المشاهد الأربعة: يصل الطرد."
+            "الفصل 2: الدليل"
+            "الراوي والمكان: هشام، بورسعيد.   "
+            "المشاهد الأربعة: يظهر القرط."
+            "جدول الإشارات التمهيدية والمردود السردي :"
+            "خيط القرط: يُبذر في الفصل 2."
+        )
+        for filename, content in {
+            "seed.txt": "بذرة",
+            "world.md": "عالم",
+            "characters.md": "شخصيات",
+            "canon.md": "كانون",
+            "voice.md": "صوت",
+            "outline.md": inline_outline,
+        }.items():
+            (self.project_dir / filename).write_text(content, encoding="utf-8")
+
+        result = self.run_generator()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        updated = (self.project_dir / "outline.md").read_text(encoding="utf-8")
+        self.assertTrue(updated.startswith("## الفصل 1: الخريف\n\n"))
+        self.assertIn("### Chapter Intent", updated)
+        self.assertIn(
+            "الفصل 2: الدليل"
+            "الراوي والمكان: هشام، بورسعيد.   "
+            "المشاهد الأربعة: يظهر القرط.",
+            updated,
+        )
+        self.assertTrue(
+            updated.endswith(
+                "جدول الإشارات التمهيدية والمردود السردي :"
+                "خيط القرط: يُبذر في الفصل 2."
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -42,6 +42,20 @@ _CHAPTER_HEADING_RE = re.compile(
 )
 _MARKDOWN_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})(?:[ \t]+|$)", re.MULTILINE)
 _DIGIT_RE = re.compile(r"^(?P<number>[0-9\u0660-\u0669\u06f0-\u06f9]+)(?=$|[\s:：\-–—])")
+_INLINE_CHAPTER_RE = re.compile(
+    r"(?:\A|[\r\n]+|[.!؟…][ \t]*)"
+    r"(?P<label>(?:Chapter|Ch|الفصل|فصل)[ \t]+"
+    r"(?P<number>[0-9\u0660-\u0669\u06f0-\u06f9]+)[ \t]*[:：])",
+    re.IGNORECASE,
+)
+_INLINE_BODY_START_RE = re.compile(
+    r"(?:الراوي[ \t]+والمكان|POV[ \t]*(?:/|and)[ \t]*(?:Place|Setting))[ \t]*:",
+    re.IGNORECASE,
+)
+_INLINE_APPENDIX_RE = re.compile(
+    r"(?:\A|[\r\n]+|[.!؟…][ \t]*)"
+    r"(?P<label>جدول[ \t]+الإشارات[ \t]+التمهيدية[ \t]+والمردود[ \t]+السردي[ \t]*[:：])"
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,7 @@ class _ChapterHeading:
     end: int
     level: int
     chapter_num: int
+    is_markdown: bool = True
 
 
 def _parse_chapter_number(remainder: str) -> int | None:
@@ -82,7 +97,17 @@ def _chapter_headings(outline_text: str) -> list[_ChapterHeading]:
                     chapter_num=chapter_num,
                 )
             )
-    return headings
+    for match in _INLINE_CHAPTER_RE.finditer(outline_text):
+        headings.append(
+            _ChapterHeading(
+                start=match.start("label"),
+                end=match.end("label"),
+                level=2,
+                chapter_num=int(match.group("number")),
+                is_markdown=False,
+            )
+        )
+    return sorted(headings, key=lambda heading: heading.start)
 
 
 def _extract_heading_section(
@@ -91,16 +116,31 @@ def _extract_heading_section(
     section_end = _heading_section_end(outline_text, selected_heading)
 
     content = outline_text[selected_heading.start:section_end].strip()
+    if not selected_heading.is_markdown:
+        body_match = _INLINE_BODY_START_RE.search(content, selected_heading.end - selected_heading.start)
+        if body_match:
+            heading_text = content[:body_match.start()].strip()
+            body = content[body_match.start():].strip()
+            content = f"## {heading_text}\n\n{body}"
     return re.sub(r"\n+---+\s*$", "", content).strip()
 
 
 def _heading_section_end(
     outline_text: str, selected_heading: _ChapterHeading
 ) -> int:
-    for match in _MARKDOWN_HEADING_RE.finditer(outline_text, selected_heading.end):
-        if len(match.group("marks")) <= selected_heading.level:
-            return match.start()
-    return len(outline_text)
+    candidates = []
+    for heading in _chapter_headings(outline_text):
+        if heading.start <= selected_heading.start:
+            continue
+        if not selected_heading.is_markdown or not heading.is_markdown:
+            candidates.append(heading.start)
+        elif heading.level <= selected_heading.level:
+            candidates.append(heading.start)
+
+    appendix_match = _INLINE_APPENDIX_RE.search(outline_text, selected_heading.end)
+    if appendix_match:
+        candidates.append(appendix_match.start("label"))
+    return min(candidates, default=len(outline_text))
 
 
 def find_chapter_outline(outline_text: str, chapter_num: int) -> str | None:
@@ -163,12 +203,30 @@ def replace_chapter_outline(
         raise ValueError("Chapter section contains another chapter; repair its heading level first")
     suffix = outline_text[section_end:]
     separator = "\n\n" if suffix else "\n"
-    updated = outline_text[: selected_heading.start] + normalized + separator + suffix
+    replacement_prefix = ""
+    if (
+        not selected_heading.is_markdown
+        and selected_heading.start > 0
+        and outline_text[selected_heading.start - 1] not in "\r\n"
+    ):
+        replacement_prefix = "\n\n"
+    updated = (
+        outline_text[: selected_heading.start]
+        + replacement_prefix
+        + normalized
+        + separator
+        + suffix
+    )
     updated_heading = next(
         heading for heading in _chapter_headings(updated)
         if heading.chapter_num == chapter_num
     )
-    expected_end = selected_heading.start + len(normalized) + len(separator)
+    expected_end = (
+        selected_heading.start
+        + len(replacement_prefix)
+        + len(normalized)
+        + len(separator)
+    )
     if _heading_section_end(updated, updated_heading) != expected_end:
         raise ValueError("Chapter beats must preserve neighboring section boundaries")
     return updated
