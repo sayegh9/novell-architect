@@ -920,23 +920,7 @@ def api_update_settings(req: SettingsUpdateRequest):
     for k, v in env_map.items():
         new_lines.append(f"{k}={v}")
 
-    try:
-        atomic_write_text(env_file, "\n".join(new_lines) + "\n", encoding="utf-8")
-    except OSError as e:
-        print(f"Note: .env update skipped ({e}), trying settings.json fallback")
-        # Save to settings.json
-        settings_file = PROJECT_DIR / "settings.json"
-        try:
-            atomic_write_text(
-                settings_file, json.dumps(env_map, indent=2), encoding="utf-8"
-            )
-        except OSError as fallback_error:
-            detail = (
-                f"Failed to save settings to {env_file.name} ({e}) or "
-                f"{settings_file.name} ({fallback_error})"
-            )
-            print(detail, file=sys.stderr)
-            raise HTTPException(status_code=500, detail=detail) from fallback_error
+    _write_core_text(env_file, "\n".join(new_lines) + "\n")
 
     os.environ.update(runtime_updates)
     return {"status": "updated", "settings": api_get_settings()}

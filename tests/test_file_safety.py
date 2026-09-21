@@ -157,34 +157,46 @@ class ServerFileSafetyTests(unittest.TestCase):
         self.assertIn(str(state_path), errors.getvalue())
         self.assertIn("state replacement interrupted", errors.getvalue())
 
-    def test_settings_write_failures_keep_original_and_report_both_destinations(self):
+    def test_env_write_failure_does_not_fall_back_or_change_runtime_settings(self):
         file_utils = load_file_utils()
         env_path = self.project_dir / ".env"
         env_path.write_text("AUTONOVEL_WRITER_MODEL=old-model\n", encoding="utf-8")
+        settings_path = self.project_dir / "settings.json"
+        original_settings = {
+            "AUTONOVEL_WRITER_MODEL": "json-old-model",
+            "AUTONOVEL_LANGUAGE": "fr",
+        }
+        settings_path.write_text(json.dumps(original_settings), encoding="utf-8")
+        real_replace = file_utils.os.replace
+
+        def fail_env_replace(source, destination):
+            if Path(destination) == env_path:
+                raise OSError("env storage unavailable")
+            return real_replace(source, destination)
 
         with (
             patch.dict(os.environ, {"AUTONOVEL_WRITER_MODEL": "old-model"}),
-            patch.object(
-                file_utils.os,
-                "replace",
-                side_effect=OSError("settings storage unavailable"),
-            ),
+            patch.object(file_utils.os, "replace", side_effect=fail_env_replace),
         ):
             response = self.client.post(
                 "/api/settings", json={"writer_model": "new-model"}
             )
-            runtime_writer_model = os.environ["AUTONOVEL_WRITER_MODEL"]
+            runtime_after_response = os.environ["AUTONOVEL_WRITER_MODEL"]
+            server.rebuild_runtime_settings(self.project_dir)
+            runtime_after_rebuild = os.environ["AUTONOVEL_WRITER_MODEL"]
 
         self.assertEqual(response.status_code, 500)
         self.assertIn(".env", response.json()["detail"])
-        self.assertIn("settings.json", response.json()["detail"])
-        self.assertIn("settings storage unavailable", response.json()["detail"])
-        self.assertEqual(runtime_writer_model, "old-model")
+        self.assertIn("env storage unavailable", response.json()["detail"])
+        self.assertEqual(runtime_after_response, "old-model")
+        self.assertEqual(runtime_after_rebuild, "old-model")
         self.assertEqual(
             env_path.read_text(encoding="utf-8"),
             "AUTONOVEL_WRITER_MODEL=old-model\n",
         )
-        self.assertFalse((self.project_dir / "settings.json").exists())
+        self.assertEqual(
+            json.loads(settings_path.read_text(encoding="utf-8")), original_settings
+        )
 
 
 class BoundedJobLogTests(unittest.TestCase):
