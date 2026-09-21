@@ -154,6 +154,7 @@ class JobState:
     def __init__(self, max_log_lines: Optional[int] = None):
         self.is_running = False
         self.current_cmd = ""
+        self.last_returncode: Optional[int] = None
         self.current_process: Optional[asyncio.subprocess.Process] = None
         limit = get_job_log_max_lines() if max_log_lines is None else max_log_lines
         if limit < 1:
@@ -180,6 +181,43 @@ def _write_core_text(
         print(detail, file=sys.stderr)
         raise HTTPException(status_code=500, detail=detail) from exc
 
+
+def sync_latest_foundation_scores(data: dict) -> bool:
+    """Overlay scores from the newest valid foundation evaluation log."""
+    eval_logs_dir = PROJECT_DIR / "eval_logs"
+    if not eval_logs_dir.exists():
+        return False
+
+    for log_path in sorted(eval_logs_dir.glob("*_foundation.json"), reverse=True):
+        try:
+            evaluation = json.loads(log_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        valid_scores: dict[str, float] = {}
+        for source_key, state_key in (
+            ("overall_score", "foundation_score"),
+            ("lore_score", "lore_score"),
+        ):
+            if source_key not in evaluation:
+                continue
+            try:
+                valid_scores[state_key] = float(evaluation[source_key])
+            except (TypeError, ValueError):
+                continue
+
+        if not valid_scores:
+            continue
+
+        updated = False
+        for state_key, score in valid_scores.items():
+            if data.get(state_key) != score:
+                data[state_key] = score
+                updated = True
+        return updated
+
+    return False
+
 def get_state() -> dict:
     state_file = PROJECT_DIR / "state.json"
     if state_file.exists():
@@ -201,33 +239,18 @@ def get_state() -> dict:
                 data["chapters_drafted"] = actual_count
                 atomic_write_text(state_file, json.dumps(data, indent=2))
 
-            # Auto-sync foundation_score if 0.0 or unset from latest foundation eval log
-            if float(data.get("foundation_score", 0.0)) == 0.0:
-                eval_logs_dir = PROJECT_DIR / "eval_logs"
-                if eval_logs_dir.exists():
-                    f_logs = sorted(eval_logs_dir.glob("*_foundation.json"), reverse=True)
-                    if f_logs:
-                        try:
-                            f_data = json.loads(f_logs[0].read_text(encoding="utf-8"))
-                            updated = False
-                            if "overall_score" in f_data:
-                                data["foundation_score"] = float(f_data["overall_score"])
-                                updated = True
-                            if "lore_score" in f_data:
-                                data["lore_score"] = float(f_data["lore_score"])
-                                updated = True
-                            if updated:
-                                atomic_write_text(state_file, json.dumps(data, indent=2))
-                        except Exception as exc:
-                            print(
-                                f"Failed to sync {state_file} from {f_logs[0]}: {exc}",
-                                file=sys.stderr,
-                            )
+            # Evaluation logs are the source of truth, including re-scores that
+            # replace an older non-zero state value.
+            if sync_latest_foundation_scores(data):
+                atomic_write_text(
+                    state_file,
+                    json.dumps(data, indent=2, ensure_ascii=False),
+                )
 
             return data
         except Exception as exc:
             print(f"Failed to read or update {state_file}: {exc}", file=sys.stderr)
-    return {
+    data = {
         "phase": "foundation",
 
         "current_focus": "planning",
@@ -240,6 +263,15 @@ def get_state() -> dict:
         "revision_cycle": 0,
         "debts": [],
     }
+    if sync_latest_foundation_scores(data):
+        try:
+            atomic_write_text(
+                state_file,
+                json.dumps(data, indent=2, ensure_ascii=False),
+            )
+        except OSError as exc:
+            print(f"Failed to persist synced scores to {state_file}: {exc}", file=sys.stderr)
+    return data
 
 def get_results_tsv() -> List[dict]:
     results_file = PROJECT_DIR / "results.tsv"
@@ -1246,6 +1278,16 @@ def _build_optional_chapter_action(script: str) -> ActionBuilder:
     return build
 
 
+def _build_bounded_chapter_action(script: str) -> ActionBuilder:
+    def build(params: Mapping[str, Any]) -> ActionCommand:
+        chapter = _positive_int(params.get("chapter"), "chapter")
+        if chapter > 24:
+            raise ValueError("chapter must be between 1 and 24")
+        return _command((script, str(chapter)))
+
+    return build
+
+
 def _build_rewrite_chapter_beats(params: Mapping[str, Any]) -> ActionCommand:
     chapter = _positive_int(params.get("chapter"), "chapter")
     if chapter > 24:
@@ -1292,6 +1334,9 @@ ACTION_REGISTRY: dict[str, ActionBuilder] = {
     "gen_outline_part2": _simple_action("gen_outline_part2.py"),
     "gen_canon": _simple_action("gen_canon.py"),
     "voice_fingerprint": _simple_action("voice_fingerprint.py"),
+    "generate_chapter_beats": _build_bounded_chapter_action(
+        "generate_chapter_beats.py"
+    ),
     "draft_chapter": _build_chapter_action("draft_chapter.py"),
     "evaluate_foundation": _simple_action("evaluate.py", "--phase=foundation"),
     "evaluate_chapter": _build_evaluate_chapter,
@@ -1321,6 +1366,7 @@ async def run_command_stream(argv: Sequence[str], display_cmd: str):
     """Execute an allowlisted script argv and stream output over WebSocket."""
     job_state.is_running = True
     job_state.current_cmd = display_cmd
+    job_state.last_returncode = None
     job_state.logs.clear()
     
     await manager.broadcast({
@@ -1362,12 +1408,14 @@ async def run_command_stream(argv: Sequence[str], display_cmd: str):
 
         await process.wait()
         returncode = process.returncode
+        job_state.last_returncode = returncode
         await manager.broadcast({
             "type": "job_end",
             "returncode": returncode,
             "cmd": display_cmd,
         })
     except Exception as e:
+        job_state.last_returncode = -1
         err_msg = f"\nError executing process: {str(e)}\n"
         job_state.logs.append(err_msg)
         await manager.broadcast({
@@ -1427,6 +1475,7 @@ def api_get_logs():
     return {
         "is_running": job_state.is_running,
         "cmd": job_state.current_cmd,
+        "returncode": job_state.last_returncode,
         "logs": list(job_state.logs),
     }
 
@@ -1444,6 +1493,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "connected",
             "is_running": job_state.is_running,
             "cmd": job_state.current_cmd,
+            "returncode": job_state.last_returncode,
             "logs_preview": list(job_state.logs)[-50:],
         })
         while True:

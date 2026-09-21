@@ -133,6 +133,31 @@ class ActionApiTests(unittest.IsolatedAsyncioTestCase):
                     [(server.run_command_stream, (expected_argv, expected_display), {})],
                 )
 
+    async def test_generate_chapter_beats_targets_only_the_selected_chapter(self):
+        self.assertIn("generate_chapter_beats", server.ACTION_REGISTRY)
+        background = RecordingBackgroundTasks()
+
+        response = await server.api_run_action(
+            server.RunActionRequest(
+                action="generate_chapter_beats", params={"chapter": 4}
+            ),
+            background,
+        )
+
+        self.assertEqual(
+            response, {"status": "started", "cmd": "generate_chapter_beats.py 4"}
+        )
+        self.assertEqual(
+            background.calls,
+            [
+                (
+                    server.run_command_stream,
+                    (("generate_chapter_beats.py", "4"), response["cmd"]),
+                    {},
+                )
+            ],
+        )
+
     async def test_drafting_room_actions_map_to_their_exact_script_arguments(self):
         cases = (
             (
@@ -264,6 +289,8 @@ class ActionApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_and_invalid_actions_do_not_schedule_a_process(self):
         cases = (
             ("not_registered", {}, "Unknown action"),
+            ("generate_chapter_beats", {"chapter": 0}, "chapter"),
+            ("generate_chapter_beats", {"chapter": 25}, "chapter"),
             ("rewrite_chapter_beats", {"chapter": 0, "mode": "fresh"}, "chapter"),
             ("rewrite_chapter_beats", {"chapter": 25, "mode": "fresh"}, "chapter"),
             ("rewrite_chapter_beats", {"chapter": 1, "mode": "patch"}, "mode"),
@@ -338,6 +365,7 @@ class ActionApiTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(server.job_state.current_cmd, display)
         self.assertEqual(list(server.job_state.logs), ["first line\n"])
+        self.assertEqual(server.api_get_logs()["returncode"], 0)
         broadcast.assert_any_await({"type": "job_start", "cmd": display})
         broadcast.assert_any_await(
             {"type": "job_end", "returncode": 0, "cmd": display}

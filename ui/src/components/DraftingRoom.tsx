@@ -10,8 +10,6 @@ import {
   Minimize2, 
   PanelLeftClose, 
   PanelLeft, 
-  Sliders, 
-  Type, 
   Clock, 
   Hash, 
   Sparkles,
@@ -26,20 +24,20 @@ import {
   runAction, 
   fetchFileContent,
   fetchChapterBeats,
-  saveChapterBeats
+  saveChapterBeats,
+  fetchActionStatus
 } from '../services/api';
-import { ChapterSummary } from '../types';
+import { waitForJobCompletion } from '../utils/waitForJob';
 import { useI18n } from '../i18n';
-import { useTheme } from '../theme';
 import { useToast } from './ToastContainer';
 
 export const DraftingRoom: React.FC = () => {
-  const { t, lang, isRTL } = useI18n();
-  const { isDark } = useTheme();
+  const { t, lang } = useI18n();
   const { success, error, info: toastInfo } = useToast();
 
   const [selectedCh, setSelectedCh] = useState<number>(1);
   const [prose, setProse] = useState<string>('');
+  const [chapterExists, setChapterExists] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [triggering, setTriggering] = useState(false);
@@ -72,10 +70,10 @@ export const DraftingRoom: React.FC = () => {
       setLoading(true);
       const res = await fetchChapter(chNum);
       setProse(res.content || '');
+      setChapterExists(true);
     } catch {
-      setProse(lang === 'ar' 
-        ? `// لم تتم كتابة مسودة الفصل ${chNum} بعد.\n// انقر فوق "كتابة الفصل" لصياغته بالذكاء الاصطناعي أو اكتب مباشرة هنا.`
-        : `// Chapter ${chNum} draft does not exist yet.\n// Click "Draft Chapter" to generate autonomously, or write here.`);
+      setProse('');
+      setChapterExists(false);
     } finally {
       setLoading(false);
     }
@@ -150,6 +148,7 @@ export const DraftingRoom: React.FC = () => {
     try {
       setLoading(true);
       await saveChapter(selectedCh, prose);
+      setChapterExists(true);
       setSaved(true);
       success(t('seed.saved'));
       setTimeout(() => setSaved(false), 2000);
@@ -160,13 +159,44 @@ export const DraftingRoom: React.FC = () => {
     }
   };
 
-  const handleDraftAction = async () => {
+  const runAndWait = async (action: string, params: Record<string, unknown>) => {
+    const started = await runAction(action, params);
+    await waitForJobCompletion(started.cmd, fetchActionStatus);
+  };
+
+  const handleGenerateBeats = async () => {
+    if (beats.trim() && !window.confirm(t('drafting.regenerate_beats_warning'))) {
+      return;
+    }
+
     try {
       setTriggering(true);
-      await runAction('draft_chapter', { chapter: selectedCh });
-      success(lang === 'ar' ? `بدأت كتابة الفصل ${selectedCh} بالذكاء الاصطناعي!` : `Drafting Chapter ${selectedCh} autonomously! Check Live Terminal.`);
-    } catch (e: any) {
-      error(`Drafting failed: ${e.message}`);
+      toastInfo(t('drafting.generating_beats'));
+      await runAndWait('generate_chapter_beats', { chapter: selectedCh });
+      await Promise.all([loadOutlineDoc(), loadChapterBeatsData(selectedCh)]);
+      success(t('drafting.beats_generated'));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unexpected error';
+      error(`${t('drafting.generate_beats_failed')}: ${message}`);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleDraftAction = async () => {
+    if (!beats.trim() && !window.confirm(t('drafting.draft_without_beats_warning'))) {
+      return;
+    }
+
+    try {
+      setTriggering(true);
+      toastInfo(t('drafting.drafting_selected'));
+      await runAndWait('draft_chapter', { chapter: selectedCh });
+      await loadChapterProse(selectedCh);
+      success(t('drafting.chapter_drafted'));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unexpected error';
+      error(`Drafting failed: ${message}`);
     } finally {
       setTriggering(false);
     }
@@ -175,12 +205,13 @@ export const DraftingRoom: React.FC = () => {
   const handleRedraftFromBeats = async () => {
     try {
       setTriggering(true);
-      await runAction('rewrite_chapter_beats', { chapter: selectedCh, mode: 'fresh' });
-      success(lang === 'ar' 
-        ? `بدأت صياغة مسودة جديدة بالكامل للفصل ${selectedCh} بناءً على النبضات!` 
-        : `Re-drafting Chapter ${selectedCh} strictly from beats! Follow Live Terminal.`);
-    } catch (e: any) {
-      error(`Re-draft failed: ${e.message}`);
+      toastInfo(t('drafting.drafting_selected'));
+      await runAndWait('rewrite_chapter_beats', { chapter: selectedCh, mode: 'fresh' });
+      await loadChapterProse(selectedCh);
+      success(t('drafting.chapter_drafted'));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unexpected error';
+      error(`Re-draft failed: ${message}`);
     } finally {
       setTriggering(false);
     }
@@ -189,12 +220,13 @@ export const DraftingRoom: React.FC = () => {
   const handleReviseWithBeats = async () => {
     try {
       setTriggering(true);
-      await runAction('rewrite_chapter_beats', { chapter: selectedCh, mode: 'revise' });
-      success(lang === 'ar' 
-        ? `بدأ تنقيح مسودة الفصل ${selectedCh} لإدماج النبضات الجديدة!` 
-        : `Revising Chapter ${selectedCh} draft with updated beats! Follow Live Terminal.`);
-    } catch (e: any) {
-      error(`Revision failed: ${e.message}`);
+      toastInfo(t('drafting.revising_selected'));
+      await runAndWait('rewrite_chapter_beats', { chapter: selectedCh, mode: 'revise' });
+      await loadChapterProse(selectedCh);
+      success(t('drafting.chapter_revised'));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unexpected error';
+      error(`Revision failed: ${message}`);
     } finally {
       setTriggering(false);
     }
@@ -285,37 +317,46 @@ export const DraftingRoom: React.FC = () => {
             </button>
           )}
 
-          {/* Score Chapter Button */}
-          <button
-            onClick={handleScoreAction}
-            disabled={triggering}
-            className="px-3 py-2 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-          >
-            <Award className="w-4 h-4 text-amber-500" />
-            <span>{t('drafting.btn_score')}</span>
-          </button>
-
-          {/* Re-Draft from Beats (Fresh) */}
-          <button
-            onClick={handleRedraftFromBeats}
-            disabled={triggering}
-            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
-            title={t('drafting.btn_redraft_title')}
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{t('drafting.btn_redraft_beats')} ({selectedCh})</span>
-          </button>
-
-          {/* Revise with Beats (Guided) */}
-          <button
-            onClick={handleReviseWithBeats}
-            disabled={triggering}
-            className="px-3.5 py-2 rounded-xl bg-amber-500/15 dark:bg-amber-500/25 hover:bg-amber-500/35 text-amber-600 dark:text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-            title={t('drafting.btn_revise_title')}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>{t('drafting.btn_revise_beats')}</span>
-          </button>
+          {!chapterExists ? (
+            <button
+              onClick={handleDraftAction}
+              disabled={triggering}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+              title={beats.trim() ? t('drafting.draft_from_beats') : t('drafting.draft_from_outline')}
+            >
+              {triggering ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              <span>{t('drafting.draft_selected')} {selectedCh}</span>
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleScoreAction}
+                disabled={triggering}
+                className="px-3 py-2 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <Award className="w-4 h-4 text-amber-500" />
+                <span>{t('drafting.btn_score')}</span>
+              </button>
+              <button
+                onClick={handleRedraftFromBeats}
+                disabled={triggering || !beats.trim()}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+                title={beats.trim() ? t('drafting.btn_redraft_title') : t('drafting.generate_beats_first')}
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{t('drafting.btn_redraft_beats')} ({selectedCh})</span>
+              </button>
+              <button
+                onClick={handleReviseWithBeats}
+                disabled={triggering || !beats.trim()}
+                className="px-3.5 py-2 rounded-xl bg-amber-500/15 dark:bg-amber-500/25 hover:bg-amber-500/35 disabled:opacity-50 text-amber-600 dark:text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                title={beats.trim() ? t('drafting.btn_revise_title') : t('drafting.generate_beats_first')}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>{t('drafting.btn_revise_beats')}</span>
+              </button>
+            </>
+          )}
 
           {/* Batch Draft All Button */}
           <button
@@ -405,17 +446,28 @@ export const DraftingRoom: React.FC = () => {
                     {/* Edit / Save / Cancel Buttons */}
                     <div className="flex items-center gap-1.5">
                       {!isEditingBeats ? (
-                        <button
-                          onClick={() => {
-                            setIsEditingBeats(true);
-                            setEditedBeatsText(beats);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#151926] hover:bg-slate-100 dark:hover:bg-[#1f2538] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#20283d] text-[11px] font-medium flex items-center gap-1 transition-all shadow-xs"
-                          title={t('drafting.edit_beats')}
-                        >
-                          <Edit3 className="w-3 h-3 text-amber-500" />
-                          <span>{t('drafting.edit_beats')}</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={handleGenerateBeats}
+                            disabled={triggering}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-[11px] font-semibold flex items-center gap-1 transition-all shadow-sm"
+                            title={beats.trim() ? t('drafting.regenerate_beats') : t('drafting.generate_beats')}
+                          >
+                            {triggering ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                            <span>{beats.trim() ? t('drafting.regenerate_beats') : t('drafting.generate_beats')}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsEditingBeats(true);
+                              setEditedBeatsText(beats);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#151926] hover:bg-slate-100 dark:hover:bg-[#1f2538] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#20283d] text-[11px] font-medium flex items-center gap-1 transition-all shadow-xs"
+                            title={t('drafting.edit_beats')}
+                          >
+                            <Edit3 className="w-3 h-3 text-amber-500" />
+                            <span>{t('drafting.edit_beats')}</span>
+                          </button>
+                        </>
                       ) : (
                         <>
                           <button
@@ -459,8 +511,18 @@ export const DraftingRoom: React.FC = () => {
                       {beats}
                     </div>
                   ) : (
-                    <div className="py-8 text-center text-xs text-slate-400 italic">
-                      {lang === 'ar' ? 'لا توجد نبضات مخصصة لهذا الفصل في outline.md.' : 'No specific beat notes extracted for this chapter.'}
+                    <div className="py-8 text-center text-xs text-slate-400 space-y-3">
+                      <p className="italic">
+                        {lang === 'ar' ? 'لا توجد نبضات مخصصة لهذا الفصل في outline.md.' : 'No specific beat notes extracted for this chapter.'}
+                      </p>
+                      <button
+                        onClick={handleGenerateBeats}
+                        disabled={triggering}
+                        className="mx-auto px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 not-italic font-semibold flex items-center gap-1.5 transition-all"
+                      >
+                        {triggering ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        <span>{t('drafting.generate_beats')}</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -545,6 +607,7 @@ export const DraftingRoom: React.FC = () => {
                 rows={zenMode ? 28 : 22}
                 className={`w-full bg-slate-50/50 dark:bg-[#080a10] border border-slate-200 dark:border-[#1d2334] rounded-xl p-6 prose-literary text-slate-800 dark:text-slate-100 ${fontSizeClasses[fontSize]} focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all resize-y selection:bg-amber-500/20`}
                 placeholder={`Drafting Chapter ${selectedCh}...`}
+                aria-label={lang === 'ar' ? `نص الفصل ${selectedCh}` : `Chapter ${selectedCh} prose`}
               />
             </div>
           </div>

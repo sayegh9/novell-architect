@@ -20,6 +20,18 @@ export interface SaveChapterBeatsResponse {
   beats: string;
 }
 
+export interface ActionRunResponse {
+  status: 'started';
+  cmd: string;
+}
+
+export interface ActionJobStatus {
+  is_running: boolean;
+  cmd: string;
+  returncode: number | null;
+  logs: string[];
+}
+
 interface ApiErrorResponse {
   detail?: string;
 }
@@ -106,7 +118,10 @@ export async function fetchEvalLogs() {
   return res.json();
 }
 
-export async function runAction(action: string, params: Record<string, any> = {}) {
+export async function runAction(
+  action: string,
+  params: Record<string, unknown> = {},
+): Promise<ActionRunResponse> {
   const res = await fetch(`${API_BASE}/actions/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -116,6 +131,12 @@ export async function runAction(action: string, params: Record<string, any> = {}
     const err = await res.json().catch(() => ({ detail: 'Failed to run action' }));
     throw new Error(err.detail || 'Failed to run action');
   }
+  return res.json();
+}
+
+export async function fetchActionStatus(): Promise<ActionJobStatus> {
+  const res = await fetch(`${API_BASE}/actions/logs`);
+  if (!res.ok) throw new Error('Failed to fetch action status');
   return res.json();
 }
 

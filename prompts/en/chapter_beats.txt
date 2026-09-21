@@ -1,0 +1,40 @@
+Expand Chapter {chapter_num} into a detailed, draft-ready beat sheet.
+
+PRESERVE the existing chapter heading exactly. Return one Markdown section with this structure:
+- Chapter Intent: the irreversible story change this chapter must cause
+- POV / Place / Time
+- Opening State
+- 5-8 numbered Scene Beats, each specifying goal, conflict, turn, and consequence
+- Character and Emotional Movement
+- Reveals and Foreshadowing
+- Canon and Continuity Constraints
+- Closing Hook and handoff to the next chapter
+
+Every beat must cause the next. Do not write prose. Do not contradict canon or invent a solution that belongs to a later chapter. When the documents leave a detail unresolved, phrase it as a constraint for the drafter instead of silently inventing a fact.
+
+SEED
+{seed}
+
+WORLD
+{world}
+
+CHARACTERS
+{characters}
+
+CANON
+{canon}
+
+VOICE
+{voice}
+
+OVERALL OUTLINE
+{outline}
+
+PREVIOUS CHAPTER CONTEXT
+{previous_chapter}
+
+CURRENT CHAPTER SECTION
+{current_chapter}
+
+NEXT CHAPTER CONTEXT
+{next_chapter}
