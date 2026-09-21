@@ -37,13 +37,18 @@ from file_utils import atomic_write_text
 from outline_utils import find_chapter_outline, replace_chapter_outline
 from settings import (
     DEFAULT_PROJECT_SETTINGS,
+    capture_startup_provider_environment,
     child_process_environment,
     rebuild_runtime_settings,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
-load_dotenv(SCRIPT_DIR / ".env", override=True)
+SERVER_ENV_FILE = Path(
+    os.environ.get("AUTONOVEL_ENV_FILE", SCRIPT_DIR / ".env")
+).expanduser()
+load_dotenv(SERVER_ENV_FILE, override=True)
+capture_startup_provider_environment()
 rebuild_runtime_settings(PROJECT_DIR)
 
 DEFAULT_SERVER_HOST = "127.0.0.1"

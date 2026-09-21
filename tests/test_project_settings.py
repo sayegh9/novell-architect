@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +9,9 @@ from unittest.mock import AsyncMock, patch
 
 import server
 import settings as project_settings
+
+
+APP_DIR = Path(__file__).resolve().parents[1]
 
 
 MANAGED_SETTING_KEYS = (
@@ -42,6 +47,49 @@ class _CompletedProcess:
 
 
 class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
+    def test_explicit_server_env_file_reaches_runtime_and_child_jobs(self):
+        server_env = self.script_dir / "server.env"
+        server_env.write_text("GEMINI_API_KEY=test-provider-key\n", encoding="utf-8")
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in PROVIDER_API_KEYS and not key.startswith("AUTONOVEL_")
+        }
+        environment.update(
+            {
+                "AUTONOVEL_ENV_FILE": str(server_env),
+                "AUTONOVEL_PROJECT_DIR": str(self.project_b),
+                "PYTHONPATH": str(APP_DIR),
+            }
+        )
+        script = """
+import json
+import os
+import server
+from settings import child_process_environment
+
+child = child_process_environment(server.PROJECT_DIR, {})
+print(json.dumps({
+    "runtime_has_key": bool(os.environ.get("GEMINI_API_KEY")),
+    "child_has_key": bool(child.get("GEMINI_API_KEY")),
+}))
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=APP_DIR,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout.strip()),
+            {"runtime_has_key": True, "child_has_key": True},
+        )
+
     def setUp(self):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.script_dir = Path(self._temp_dir.name).resolve()

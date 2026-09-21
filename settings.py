@@ -43,6 +43,18 @@ STARTUP_PROVIDER_ENVIRONMENT: Mapping[str, str] = MappingProxyType(
 )
 
 
+def capture_startup_provider_environment(
+    environ: Optional[Mapping[str, str]] = None,
+) -> Mapping[str, str]:
+    """Capture provider credentials after the server has loaded its env file."""
+    global STARTUP_PROVIDER_ENVIRONMENT
+    source = os.environ if environ is None else environ
+    STARTUP_PROVIDER_ENVIRONMENT = MappingProxyType(
+        {key: source[key] for key in PROVIDER_API_KEYS if source.get(key)}
+    )
+    return STARTUP_PROVIDER_ENVIRONMENT
+
+
 def _read_json_settings(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
