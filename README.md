@@ -32,21 +32,28 @@ uv run python run_pipeline.py --from-scratch
 ```
 
 ### Autonovel Studio (GUI)
-Autonovel includes a web-based GUI for interactive planning, chapter drafting, and evaluation.
-To start the studio:
+Autonovel includes a local web app for interactive planning, chapter drafting,
+and evaluation. For screen-by-screen instructions—including generating beats
+and drafting a single chapter—see the [Autonovel Studio User Manual](USER_MANUAL.md).
+
+To start the Studio:
 
 **Mac/Linux:**
 Double-click the `run_autonovel.command` script in your finder, or run it from the terminal:
 ```bash
 ./run_autonovel.command
 ```
-This script automatically builds the UI and starts the backend server on `http://localhost:8080`.
+The launcher starts the backend on `http://localhost:8080` and opens it in a
+browser. Keep the terminal open while working; use `Control+C` there to stop
+the server. The launcher builds the UI only if `ui/dist` is missing.
 
 **Manual Startup:**
-If you prefer to start it manually, ensure you have the web dependencies installed (which are not included in the core CLI dependencies by default):
+For a manual launch, install the project's Python dependencies and build the
+UI first:
 ```bash
-uv add fastapi uvicorn pydantic websockets
-cd ui && npm install && npm run build && cd ..
+uv sync
+npm --prefix ui install
+npm --prefix ui run build
 PORT=8080 uv run python server.py
 ```
 

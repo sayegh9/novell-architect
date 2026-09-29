@@ -3,6 +3,7 @@
 Step-by-step guide to running autonovel.
 
 For the full technical pipeline specification, see [PIPELINE.md](PIPELINE.md).
+For the browser-based interactive workflow, see [USER_MANUAL.md](USER_MANUAL.md).
 
 ---
 
@@ -12,6 +13,9 @@ For the full technical pipeline specification, see [PIPELINE.md](PIPELINE.md).
 # 1. Setup
 cd ~/autonovel
 cp .env.example .env   # Add your Anthropic API key
+
+# To use the graphical Studio instead of the CLI, launch it with:
+./run_autonovel.command  # then open http://localhost:8080
 
 # 2. Generate a seed concept (or write your own in seed.txt)
 uv run python seed.py

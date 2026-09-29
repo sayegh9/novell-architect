@@ -1,223 +1,210 @@
-# Autonovel Studio — Complete User Manual & Pipeline Guide
+# Autonovel Studio User Manual
 
-Welcome to **Autonovel Studio**, an autonomous AI-driven novel writing environment powered by Google Gemini (and Claude). This manual details every phase of the pipeline, from premise generation to finished manuscript typesetting.
+This guide explains the current browser-based Studio: how to prepare a project,
+build its story foundation, generate chapter beats and prose one chapter at a
+time, revise the manuscript, and export available production files. Studio is
+an AI-assisted writing workspace; review generated material before treating it
+as canon or finished prose.
 
----
+## Start the Studio
 
-## 🚀 Quick Start
+### macOS quick start
 
-### 1. Configure Your API Key
-Ensure your `.env` file in the project root contains your `GEMINI_API_KEY`:
-```env
-GEMINI_API_KEY=AIzaSyYourActualKeyHere
-AUTONOVEL_WRITER_MODEL=gemini-2.5-pro
-AUTONOVEL_JUDGE_MODEL=gemini-2.5-pro
-AUTONOVEL_REVIEW_MODEL=gemini-2.5-pro
-```
+From Finder, open `run_autonovel.command`, or from Terminal:
 
-### 2. Launch the Studio UI
-Start the local server with one command:
 ```bash
-./start_studio.sh
-# Or: python3 server.py
+cd /path/to/autonovel
+./run_autonovel.command
 ```
-Open your browser at **`http://127.0.0.1:8000`**.
 
-### 3. Multilingual Support (English & العربية)
-* Click the **🌐 Language Button** in the top bar to toggle between **English** and **العربية (RTL)**.
-* In Arabic mode, the studio automatically switches to Right-to-Left (RTL) orientation with Arabic typography (*Cairo*, *Amiri*, and *IBM Plex Sans Arabic*).
+The launcher starts the local server on `http://localhost:8080` and opens that
+address in a browser. Keep the terminal window open while using Studio; it
+shows server errors and background-job output. To stop the server, focus that
+terminal and press `Control+C`.
 
+The launcher uses the repository's `.venv` when present, otherwise `uv`, then
+`python3`. It builds the frontend only when `ui/dist` is missing. For a manual
+setup, install the Python dependencies in `pyproject.toml`, install UI
+dependencies with `npm --prefix ui install`, build with
+`npm --prefix ui run build`, then launch with `PORT=8080 uv run python server.py`.
 
----
+### API key setup
 
-## 📖 Step-by-Step Writing Workflow
+Copy `.env.example` to `.env` in the repository root and add a key for a
+supported text provider, such as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`.
+Never commit `.env` or paste a key into a document. Restart the Studio after
+changing environment keys. When running the backend from a different checkout,
+set `AUTONOVEL_ENV_FILE` to the absolute path of the intended `.env` before
+starting it; this avoids reading keys from the wrong checkout.
+
+Other services (such as illustration or narration providers) are optional and
+only needed for those specific production actions. Check `.env.example` for
+the current variable names.
+
+## Understand the workspace
+
+The left sidebar switches between pipeline stages. The top bar exposes project
+status, language, engine settings, reset, and whole-pipeline actions. Use
+**My Library** to select or create a project. Changes belong to the active
+project, so check its name before editing or generating.
+
+```mermaid
+flowchart LR
+    A[Seed & Concept] --> B[Foundation & World]
+    B --> C[Drafting Room]
+    C --> D[Editorial & Revision]
+    D --> E[Quality Analytics]
+    D --> F[Production & Export]
+    G[Terminal Stream] -. background-job output .-> A
+    G -.-> B
+    G -.-> C
+    G -.-> D
+    G -.-> F
+```
+
+| Area | What you do there |
+|---|---|
+| Seed & Concept | Write or riff on the premise and save `seed.txt`. |
+| Foundation & World | Generate and edit world, character, outline, canon, and voice planning documents; evaluate foundation quality. |
+| Drafting Room | Select a chapter, generate/edit its beats, draft or revise prose, and score the chapter. |
+| Editorial & Revision | Inspect manuscript feedback and use available revision tools. |
+| Quality Analytics | Review chapter-level quality and progress data when available. |
+| Production & Export | Start available export and production actions. |
+| Terminal Stream | Follow live output and errors from background tasks. |
+
+## A practical end-to-end workflow
 
 ```mermaid
 flowchart TD
-    Phase0["Phase 0: Seed & Concept\n(seed.txt)"] --> Phase1["Phase 1: Foundation Architecture\n(world.md, characters.md, outline.md, canon.md)"]
-    Phase1 --> Eval1["Foundation Evaluation\n(evaluate.py --phase=foundation)"]
-    Eval1 --> Phase2["Phase 2: First Draft\n(Sequential Chapter Drafting)"]
-    Phase2 --> Phase3["Phase 3: Revision Cycles\n(Adversarial Cuts, 4-Persona Panel, Briefs, Rewrites)"]
-    Phase3 --> Phase4["Phase 4: Export & Production\n(LaTeX Typeset PDF, Audiobook, Art)"]
+    A[Choose or create a Library project] --> B[Write premise and Save Seed]
+    B --> C[Generate and edit foundation documents]
+    C --> D{Foundation coherent?}
+    D -- No: edit, regenerate selectively, score again --> C
+    D -- Yes --> E[Select a chapter in Drafting Room]
+    E --> F[Generate Beats from foundation + outline]
+    F --> G[Review and edit beats; save]
+    G --> H[Draft selected chapter]
+    H --> I[Read, edit, save, and score chapter]
+    I --> J{Needs another pass?}
+    J -- Yes --> G
+    J -- No --> K[Continue to next chapter]
+    K --> E
+    K --> L[Editorial review, analytics, production]
 ```
 
----
+## 1. Create a premise
 
-### Step 1: Seed & Concept Studio (Phase 0)
+1. Confirm the active project in the sidebar. Use **My Library** to switch
+   projects or create one.
+2. Open **Seed & Concept**. Write directly in the premise editor or enter an
+   idea in **AI Idea Riffing** and choose the number of variants.
+3. Read the candidates critically, select or adapt the premise you want, and
+   click **Save Seed**. AI suggestions are not saved as your premise until you
+   choose and save one.
 
-1. Navigate to the **Seed & Concept** tab in the UI (or open [`seed.txt`](file:///Users/ahmedelsayegh/Documents/projects/novella-gravity/seed.txt)).
-2. **Generate New Premises**: Use the *AI Idea Riffing* panel to generate distinct concepts with strict magic rules, personal tensions, and world hooks.
-3. Save your favorite concept to `seed.txt`.
+## 2. Build and assess the foundation
 
-**CLI Equivalent:**
-```bash
-python3 seed.py --count 5
-# Or riff on a specific idea:
-python3 seed.py --riff "A clockmaker whose time magic costs memories"
+Open **Foundation & World** and work through the planning documents shown by
+the Studio. The main set is `world.md`, `characters.md`, `outline.md`,
+`canon.md`, and `voice.md`.
+
+Generate documents in dependency order, then read and edit them before
+continuing. The outline supplies the story-wide chapter trajectory; canon
+records facts later chapters should not contradict; voice guidance describes
+how the prose should sound. Use the foundation scoring action when available
+to identify gaps. A score is diagnostic guidance, not a guarantee of story
+quality. Keep an eye on **Terminal Stream** for task progress and errors.
+
+## 3. Generate beats and draft one chapter
+
+The Drafting Room supports focused chapter work as well as **Draft All**.
+Working chapter by chapter lets you approve the scene plan before spending a
+drafting request and helps you catch continuity problems early.
+
+1. Open **Drafting Room** and select a chapter from **Manuscript Chapters**.
+2. If no chapter beat sheet exists, choose **Generate Beats**. The model uses
+   the foundation documents and the chapter's place in the overall outline to
+   propose a structured beat sheet. This action may require a configured
+   provider API key.
+3. Review the generated beats in the chapter's beat panel. Edit them to
+   correct motivation, causality, pacing, or canon, then save. Beats are a
+   working plan, not immutable instructions.
+4. Choose **Draft Chapter** for the selected chapter. If you draft without
+   beats, the system can use the outline and context available to it; adding
+   beats first gives you more control over the chapter's shape.
+5. Watch **Terminal Stream** while the job runs. When it finishes, return to
+   the selected chapter and review the prose in the editor. Save your own
+   changes explicitly with **Save Prose Changes**.
+6. Use **Score Chapter** to get feedback. Decide whether to edit, revise from
+   beats, regenerate beats, or continue to the next chapter. Re-drafting can
+   replace existing work; read the confirmation and preserve a copy if needed.
+
+Use **Draft All** only when you want the pipeline to proceed across the
+manuscript without stopping for chapter-by-chapter approval. Long AI jobs can
+take time and can incur provider charges.
+
+### Chapter iteration loop
+
+```mermaid
+sequenceDiagram
+    actor You
+    participant Studio
+    participant Model as AI provider
+    You->>Studio: Select chapter
+    You->>Studio: Generate Beats
+    Studio->>Model: Foundation + outline + chapter context
+    Model-->>Studio: Structured beat sheet
+    You->>Studio: Review, edit, save beats
+    You->>Studio: Draft Chapter
+    Studio->>Model: Approved beats + story context
+    Model-->>Studio: Chapter prose
+    You->>Studio: Read, edit, save, score
+    You->>Studio: Continue, revise, or regenerate beats
 ```
 
----
+## 4. Revise and evaluate
 
-### Step 2: Foundation & Worldbuilding Hub (Phase 1)
+Use **Editorial & Revision** to inspect the available editing and review tools.
+Use **Quality Analytics** to compare chapter results and manuscript progress
+where data is available. Scores and model-generated critique are signals for
+your judgment: verify factual, cultural, linguistic, and continuity claims in
+the actual manuscript. Update canon or the outline when a deliberate story
+change should carry forward.
 
-Before writing prose, the pipeline generates 4 core architectural documents:
-1. **World Bible (`world.md`)**: Geography, cosmology, magic system rules (Sanderson's Laws), and societal tensions.
-2. **Character Registry (`characters.md`)**: Sanderson's 3-Sliders (Proactivity, Likability, Competence), Wound/Want/Need/Lie chains, and distinct dialogue voice guidelines.
-3. **Chapter Outline (`outline.md`)**: Full 24-chapter breakdown with Save the Cat beats, emotional arcs, try-fail cycles, and a 15+ thread Foreshadowing Ledger.
-4. **Hard Canon Database (`canon.md`)**: Extracted unalterable facts to prevent hallucinations and continuity errors.
+## 5. Produce and export
 
-**In the UI:**
-* Open the **Foundation & World** tab and click the **"Run gen_world.py"**, **"Run gen_characters.py"**, and **"Run gen_outline.py"** action buttons.
-* Click **"Score Foundation"** to run automated craft checks.
+Open **Production & Export** and select the action you need. Some outputs need
+optional service credentials and local tooling; the action and its terminal
+output indicate what is available and whether it completed. Inspect generated
+files before sharing or publishing them.
 
-**CLI Equivalent:**
-```bash
-python3 gen_world.py > world.md
-python3 gen_characters.py > characters.md
-python3 gen_outline.py > outline.md
-python3 gen_canon.py > canon.md
-python3 evaluate.py --phase=foundation
-```
+## Language, settings, and safeguards
 
----
+- Use the language control in the top bar to switch the Studio interface
+  between English and Arabic. The project generation language is configured in
+  the engine/project settings; changing interface language alone may not
+  translate existing documents.
+- **Engine Settings** controls available model and writing options. Model names
+  and controls depend on this project version and provider configuration.
+- Use **New Novel / Reset** carefully. It clears project state/drafts as
+  described by the confirmation dialog. Back up files or create a separate
+  project before a reset.
+- The Studio binds to loopback (`127.0.0.1`) by default. Do not expose it to a
+  network without adding appropriate authentication and CSRF protections;
+  CORS settings alone are not access control.
+- Do not treat AI output as verified fact. Keep your own copies of valuable
+  drafts and review generated material before publication.
 
-### Step 3: Drafting Room (Phase 2)
+## Troubleshooting
 
-Sequential chapter generation enforces strict narrative continuity:
-* Each chapter draft automatically reads the previous chapter's ending and the next chapter's opening.
-* Banned "AI slop" vocabulary (e.g., *tapestry*, *delve*, *myriad*, *chuckle*) and formulaic narration (*"He did not X, but Y"*) are actively suppressed and penalized.
+| Symptom | What to check |
+|---|---|
+| Browser says the page cannot be reached | Confirm the launcher/server is still running. Open the exact port printed in the terminal (the launcher uses `8080`; manual startup uses the configured `PORT`, otherwise `8000`). |
+| “Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is set” | Confirm the key variable spelling and `.env` path. Restart Studio after editing `.env`; with a separate checkout, set `AUTONOVEL_ENV_FILE` to the intended file. Never paste the secret into logs or support messages. |
+| A background action failed | Open **Terminal Stream** and inspect the complete error. Check the API key/provider, required input documents, and selected project before retrying. |
+| A score or result is not visible yet | Wait for the job to finish, refresh the relevant Studio state, and reopen the chapter or analytics view. If still missing, inspect the terminal output for a save/API error. |
+| The wrong novel appears | Check the active project label and select the intended book using **My Library**. |
+| The frontend appears stale after UI updates | Stop the server, rebuild with `npm --prefix ui run build`, then restart it. |
 
-**In the UI:**
-* Open the **Drafting Room** tab.
-* Select any chapter from the sidebar and click **"Draft Ch X"** or **"Score Ch X"**.
-* Read and edit prose in the distraction-free literary reader.
-
-**CLI Equivalent:**
-```bash
-# Draft a specific chapter:
-python3 draft_chapter.py 1
-
-# Score and inspect AI-pattern violations:
-python3 evaluate.py --chapter=1
-```
-
----
-
-### Step 4: Editorial & Revision Lab (Phase 3)
-
-The revision phase subjects the manuscript to multi-layered editorial pressure:
-1. **Adversarial Cuts (`adversarial_edit.py`)**: The model is tasked with ruthlessly identifying ~500 words of fat per chapter (`OVER-EXPLAIN`, `REDUNDANT`, `SLOP`, `TELLING`).
-2. **Elo Tournament (`compare_chapters.py`)**: Head-to-head chapter match-ups generate a true literary quality leaderboard.
-3. **4-Persona Reader Panel (`reader_panel.py`)**: Gathers holistic arc critique from *The Editor*, *The Genre Reader*, *The Literary Writer*, and *The First Reader*.
-4. **Targeted Revision Briefs & Rewrites (`gen_brief.py` & `gen_revision.py`)**: Auto-generates revision briefs for the weakest chapters and rewrites them.
-5. **Full Manuscript Review (`review.py`)**: Dual-persona full review (Literary Critic + Fiction Professor) providing star ratings and line-by-line craft recommendations.
-
-**In the UI:**
-* Open the **Editorial & Revision** tab to explore the visual cut cards, tournament standings, reader panel debates, and manuscript star reviews.
-
-**CLI Equivalent:**
-```bash
-# Run 500-word adversarial cuts across all chapters:
-python3 adversarial_edit.py all
-
-# Build arc summary and run 4-reader panel:
-python3 build_arc_summary.py
-python3 reader_panel.py
-
-# Run deep full-manuscript review:
-python3 review.py
-```
-
----
-
-### Step 5: Export & Production (Phase 4)
-
-Once revision reaches the target score (typically $\ge 8.0$), the novel is compiled:
-* **LaTeX Book & PDF**: Formatted with serif typography and drop caps via `typeset/build_tex.py`.
-* **Art & Covers**: Generates diverse art direction prompts and covers via `gen_art_directions.py` and `gen_art.py`.
-* **Audiobook Production**: Parses chapters into character-attributed script segments with emotion delivery tags via `gen_audiobook_script.py`.
-
----
-
-## 🤖 Running the Master Orchestrator
-
-To run the entire pipeline autonomously from start to finish:
-
-```bash
-# Start fresh from seed.txt:
-python3 run_pipeline.py --from-scratch
-
-# Run only a specific phase:
-python3 run_pipeline.py --phase drafting
-python3 run_pipeline.py --phase revision --max-cycles 4
-```
-
-In the Web UI, click the **"Run Pipeline"** button in the top navigation bar at any time to open the master orchestrator launcher.
-
----
-
-## 🔄 How to Reset & Start a New Novel
-
-When you want to start a brand-new book from a fresh concept:
-
-### Option A: Via the Web UI (One Click)
-1. In the top navigation bar, click the **"New Novel / Reset"** button.
-2. A confirmation modal will appear. Your existing novel, drafts, and evaluation logs are **automatically archived** to `archive/novel_[timestamp]/`.
-3. Check **"Keep current seed.txt"** if you want to keep your premise, or leave it unchecked to start with a blank starter template.
-4. Click **"Archive & Reset"**.
-5. The studio returns to Phase 1 (Foundation) with 0 chapters. Enter your new premise in the **Seed Studio** and begin!
-
-### Option B: Via the Terminal CLI
-Run the dedicated reset script:
-```bash
-# Safely archive current drafts to archive/ and reset state to Foundation:
-python3 reset_project.py
-
-# Keep your current seed.txt premise while clearing chapters & logs:
-python3 reset_project.py --keep-seed
-
-# Start the full pipeline immediately from scratch:
-python3 run_pipeline.py --from-scratch
-```
-
----
-
-## 🚀 Advanced Studio Features & Capabilities
-
-### 1. Interactive Cut Applicator & Revision Briefs Hub (Phase 3)
-- **Interactive Adversarial Cuts**: Browse fat-elimination targets extracted by the judge model. Selectively check off quotes and click **"Apply Selected Cuts to Chapter"** to excise repetitive prose and tighten narrative density.
-- **Revision Briefs & Chapter Rewriting**:
-  - Generate structured revision briefs (`briefs/ch_XX_brief.md`) combining reader panel critiques and adversarial cuts.
-  - Edit revision instructions in the live editor and save changes.
-  - Click **"Rewrite Chapter from Brief"** (`gen_revision.py`) to execute a full rewrite with strict voice continuity.
-
-### 2. Novel Convergence Analytics & Quality Heatmap
-- Access via the **"Quality Analytics" (تحليلات الجودة والتطور)** sidebar tab.
-- **Per-Chapter Quality Matrix**: Live cards displaying word counts, reading times, evaluation scores, fat percentages, and Elo tournament ratings.
-- **Convergence History**: Visual trajectory tracking scores across Git commit iterations from `results.tsv`.
-
-### 3. Voice Fingerprint Studio (Phase 1)
-- Located in the **Foundation & World Hub** under `voice.md`.
-- Computes sentence length variance (CV), dialogue ratio, rhythm, and sensory vocabulary wells (Body / Sensory / Trade).
-- **Custom Sample Analyzer**: Paste reference prose or excerpts to extract and inspect quantitative voice metrics.
-
-### 4. Engine Settings & Model Switcher (⚙️ Topbar)
-- Click **"Engine Settings" (إعدادات المحرك)** in the topbar to configure:
-  - **Writer Model**: Switch between `gemini-2.5-pro` (deep literary reasoning) and `gemini-2.5-flash` (ultra-fast drafting).
-  - **Judge Model**: Select evaluation and adversarial cut model.
-  - **Creativity Temperature**: Interactive slider (0.1 to 1.0) with real-time feedback.
-  - **Target Chapter Length**: Select 2,500w, 3,500w, or 5,000w.
-  - **Language Mode**: Toggle between Arabic Literary and English Fiction.
-
----
-
-## 🛠️ Troubleshooting & Tips
-
-| Issue | Cause | Solution |
-| :--- | :--- | :--- |
-| **"Stuck in revision"** | `state.json` had a stale phase set without chapters on disk. | The pipeline now auto-reconciles on startup. Run with `--from-scratch` or trigger drafting. |
-| **"Operation not permitted"** | Sandboxed server with network disabled. | Launch `server.py` or `./start_studio.sh` with network permissions enabled. |
-| **"arc_summary.md not found"** | Running `reader_panel.py` before chapters were summarized. | `reader_panel.py` now automatically invokes `build_arc_summary.py` if missing. |
-| **Rate Limits (429)** | High token throughput on Gemini Pro. | `llm.py` includes built-in retries. You can customize `AUTONOVEL_WRITER_MODEL=gemini-2.5-flash` in `.env` for faster drafts. |
-
-
+For command-line usage and the technical pipeline specification, see
+[`WORKFLOW.md`](WORKFLOW.md) and [`PIPELINE.md`](PIPELINE.md).
