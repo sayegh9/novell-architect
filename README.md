@@ -35,6 +35,8 @@ uv run python run_pipeline.py --from-scratch
 Autonovel includes a local web app for interactive planning, chapter drafting,
 and evaluation. For screen-by-screen instructions—including generating beats
 and drafting a single chapter—see the [Autonovel Studio User Manual](USER_MANUAL.md).
+Engine Settings lets each project choose Gemini or Anthropic, select model IDs,
+and save its own API key without editing `.env` by hand.
 
 To start the Studio:
 

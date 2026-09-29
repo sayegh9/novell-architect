@@ -1,4 +1,4 @@
-import { ProjectInfo, PlanningDoc, BriefItem, AnalyticsData, VoiceMetricsData, EngineSettings } from '../types';
+import { ProjectInfo, PlanningDoc, BriefItem, AnalyticsData, VoiceMetricsData, EngineSettings, EngineSettingsUpdate } from '../types';
 
 const API_BASE = '/api';
 
@@ -228,13 +228,13 @@ export async function fetchSettings(): Promise<EngineSettings> {
   return res.json();
 }
 
-export async function saveSettings(settings: Partial<EngineSettings>) {
+export async function saveSettings(settings: EngineSettingsUpdate) {
   const res = await fetch(`${API_BASE}/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
   });
-  if (!res.ok) throw new Error('Failed to save settings');
+  if (!res.ok) throw await apiError(res, 'Failed to save settings');
   return res.json();
 }
 

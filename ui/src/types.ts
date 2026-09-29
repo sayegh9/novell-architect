@@ -101,6 +101,7 @@ export interface VoiceMetricsData {
 }
 
 export interface EngineSettings {
+  provider: 'auto' | 'gemini' | 'anthropic';
   writer_model: string;
   judge_model: string;
   review_model: string;
@@ -110,4 +111,13 @@ export interface EngineSettings {
   novel_type: string;
   has_gemini_key: boolean;
   has_anthropic_key: boolean;
+  gemini_key_scope: 'project' | 'server' | 'none';
+  anthropic_key_scope: 'project' | 'server' | 'none';
+}
+
+export interface EngineSettingsUpdate extends Partial<EngineSettings> {
+  gemini_api_key?: string;
+  anthropic_api_key?: string;
+  clear_gemini_key?: boolean;
+  clear_anthropic_key?: boolean;
 }

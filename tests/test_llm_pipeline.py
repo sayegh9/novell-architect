@@ -15,6 +15,22 @@ import llm
 
 class TestLLMClient(unittest.TestCase):
 
+    @patch("llm._call_anthropic", return_value="Anthropic result")
+    @patch("llm._call_gemini")
+    def test_selected_anthropic_provider_wins_when_both_keys_exist(self, mock_gemini, mock_anthropic):
+        with patch.multiple(
+            llm,
+            PROVIDER="anthropic",
+            GEMINI_API_KEY="test-gemini-key",
+            ANTHROPIC_API_KEY="test-anthropic-key",
+            WRITER_MODEL="claude-sonnet-4-6",
+        ):
+            result = llm.call_writer("Write a scene")
+        self.assertEqual(result, "Anthropic result")
+        mock_anthropic.assert_called_once()
+        mock_gemini.assert_not_called()
+
+
     def test_clean_json_response(self):
         fenced_json = "```json\n{\"test\": 123}\n```"
         cleaned = llm.clean_json_response(fenced_json)

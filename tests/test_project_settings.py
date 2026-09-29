@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ APP_DIR = Path(__file__).resolve().parents[1]
 
 MANAGED_SETTING_KEYS = (
     "AUTONOVEL_API_BASE_URL",
+    "AUTONOVEL_PROVIDER",
     "AUTONOVEL_WRITER_MODEL",
     "AUTONOVEL_JUDGE_MODEL",
     "AUTONOVEL_REVIEW_MODEL",
@@ -47,6 +49,44 @@ class _CompletedProcess:
 
 
 class ProjectSettingsTests(unittest.IsolatedAsyncioTestCase):
+    def test_settings_save_provider_and_keys_without_returning_secrets(self):
+        server.api_set_active_project(server.SetActiveProjectRequest(id="project-a"))
+        response = server.api_update_settings(server.SettingsUpdateRequest(
+            provider="anthropic",
+            writer_model="claude-sonnet-4-6",
+            judge_model="claude-sonnet-4-6",
+            review_model="claude-opus-4-6",
+            gemini_api_key="test-gemini-secret",
+            anthropic_api_key="test-anthropic-secret",
+        ))
+        env_file = self.project_a / ".env"
+        self.assertEqual(stat.S_IMODE(env_file.stat().st_mode), 0o600)
+        self.assertIn(".env", (self.project_a / ".gitignore").read_text().splitlines())
+        self.assertEqual(response["settings"]["provider"], "anthropic")
+        self.assertEqual(response["settings"]["review_model"], "claude-opus-4-6")
+        self.assertTrue(response["settings"]["has_gemini_key"])
+        self.assertTrue(response["settings"]["has_anthropic_key"])
+        self.assertNotIn("test-gemini-secret", json.dumps(response))
+        self.assertNotIn("test-anthropic-secret", json.dumps(response))
+
+        server.api_set_active_project(server.SetActiveProjectRequest(id="project-b"))
+        self.assertEqual(server.api_get_settings()["provider"], "auto")
+        self.assertFalse(server.api_get_settings()["has_anthropic_key"])
+        server.api_set_active_project(server.SetActiveProjectRequest(id="project-a"))
+
+        server.api_update_settings(server.SettingsUpdateRequest(clear_anthropic_key=True))
+        self.assertFalse(server.api_get_settings()["has_anthropic_key"])
+        self.assertTrue(server.api_get_settings()["has_gemini_key"])
+        self.assertNotIn("ANTHROPIC_API_KEY", env_file.read_text())
+
+    def test_removing_root_key_updates_startup_fallback(self):
+        with patch.object(server, "SERVER_ENV_FILE", self.script_dir / ".env"):
+            server.api_update_settings(server.SettingsUpdateRequest(gemini_api_key="temporary-root-key"))
+            self.assertTrue(server.api_get_settings()["has_gemini_key"])
+            server.api_update_settings(server.SettingsUpdateRequest(clear_gemini_key=True))
+            self.assertFalse(server.api_get_settings()["has_gemini_key"])
+            self.assertNotIn("GEMINI_API_KEY", project_settings.STARTUP_PROVIDER_ENVIRONMENT)
+
     def test_explicit_server_env_file_reaches_runtime_and_child_jobs(self):
         server_env = self.script_dir / "server.env"
         server_env.write_text("GEMINI_API_KEY=test-provider-key\n", encoding="utf-8")

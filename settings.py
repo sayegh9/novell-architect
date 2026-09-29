@@ -21,6 +21,7 @@ from dotenv import dotenv_values
 
 DEFAULT_PROJECT_SETTINGS: Mapping[str, str] = {
     "AUTONOVEL_API_BASE_URL": "https://api.anthropic.com",
+    "AUTONOVEL_PROVIDER": "auto",
     "AUTONOVEL_WRITER_MODEL": "gemini-3.7-flash",
     "AUTONOVEL_JUDGE_MODEL": "gemini-3.7-flash",
     "AUTONOVEL_REVIEW_MODEL": "gemini-3.7-flash",

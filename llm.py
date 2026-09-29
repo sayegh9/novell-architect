@@ -22,6 +22,7 @@ load_dotenv(BASE_DIR / ".env", override=True)
 # API Keys
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+PROVIDER = os.environ.get("AUTONOVEL_PROVIDER", "auto").strip().lower()
 ANTHROPIC_BASE_URL = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
 ANTHROPIC_BETA = "context-1m-2025-08-07"
 
@@ -172,13 +173,16 @@ def call_llm(
     temperature: float = 0.7,
     timeout: int = 600,
 ) -> str:
-    """Generic LLM call dispatching to Gemini or Anthropic based on available keys."""
-    # Determine provider
-    if GEMINI_API_KEY:
+    """Dispatch to the selected provider; auto preserves legacy key priority."""
+    if PROVIDER == "gemini" or (PROVIDER == "auto" and GEMINI_API_KEY):
+        if not GEMINI_API_KEY:
+            raise RuntimeError("Google Gemini is selected, but no Gemini API key is configured")
         target_model = model or WRITER_MODEL
-        # Normalize if user had Claude model name in env
-        if "claude" in target_model.lower():
-            target_model = "gemini-2.5-flash"
+        if target_model.lower().startswith("claude"):
+            if PROVIDER == "auto":
+                target_model = "gemini-2.5-flash"
+            else:
+                raise RuntimeError("Selected model is not a Gemini model")
 
         return _call_gemini(
             prompt=prompt,
@@ -188,10 +192,15 @@ def call_llm(
             temperature=temperature,
             timeout=timeout,
         )
-    elif ANTHROPIC_API_KEY:
+    elif PROVIDER == "anthropic" or (PROVIDER == "auto" and ANTHROPIC_API_KEY):
+        if not ANTHROPIC_API_KEY:
+            raise RuntimeError("Anthropic is selected, but no Anthropic API key is configured")
         target_model = model or WRITER_MODEL
-        if "gemini" in target_model.lower():
-            target_model = "claude-sonnet-4-6"
+        if target_model.lower().startswith("gemini"):
+            if PROVIDER == "auto":
+                target_model = "claude-sonnet-4-6"
+            else:
+                raise RuntimeError("Selected model is not an Anthropic model")
         return _call_anthropic(
             prompt=prompt,
             system=system,
@@ -201,8 +210,7 @@ def call_llm(
             timeout=timeout,
         )
     else:
-        print("ERROR: Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is set in .env", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("Neither Gemini nor Anthropic API key is configured")
 
 
 def call_writer(prompt: str, system: str = "", max_tokens: int = 8000, temperature: float = 0.8, timeout: int = 600) -> str:

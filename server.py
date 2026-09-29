@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 
-from typing import Optional, List, Dict, Any, Callable, Mapping, Sequence
+from typing import Optional, List, Dict, Any, Callable, Mapping, Sequence, Literal
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from file_utils import atomic_write_text
 from outline_utils import find_chapter_outline, replace_chapter_outline
 from settings import (
@@ -172,6 +172,12 @@ job_state = JobState()
 # ============================================================================
 # Helpers
 # ============================================================================
+
+PLANNING_FILES = frozenset({
+    "seed.txt", "world.md", "characters.md", "outline.md",
+    "voice.md", "canon.md", "MYSTERY.md", "arc_summary.md",
+    "reviews.md", "CRAFT.md", "ANTI-SLOP.md", "ANTI-PATTERNS.md",
+})
 
 def _write_core_text(
     path: Path,
@@ -346,11 +352,7 @@ def api_get_state():
 @app.get("/api/files")
 def api_list_files():
     """List planning files and their existence/sizes."""
-    doc_keys = [
-        "seed.txt", "world.md", "characters.md", "outline.md",
-        "voice.md", "canon.md", "MYSTERY.md", "arc_summary.md",
-        "reviews.md", "CRAFT.md", "ANTI-SLOP.md", "ANTI-PATTERNS.md"
-    ]
+    doc_keys = sorted(PLANNING_FILES)
     files = []
     for k in doc_keys:
         p = PROJECT_DIR / k
@@ -366,13 +368,15 @@ def api_list_files():
 @app.get("/api/files/{filename}")
 def api_read_file(filename: str):
     """Read a specific planning document."""
-    # Sanitize path
-    safe_filename = Path(filename).name
-    p = PROJECT_DIR / safe_filename
+    if filename not in PLANNING_FILES:
+        raise HTTPException(status_code=404, detail="Planning file not found")
+    p = PROJECT_DIR / filename
+    if p.is_symlink():
+        raise HTTPException(status_code=400, detail="Planning file must not be a symlink")
     if not p.exists():
-        raise HTTPException(status_code=404, detail=f"File {safe_filename} not found")
+        raise HTTPException(status_code=404, detail=f"File {filename} not found")
     return {
-        "filename": safe_filename,
+        "filename": filename,
         "content": p.read_text(),
         "size": p.stat().st_size,
     }
@@ -384,10 +388,13 @@ class SaveFileRequest(BaseModel):
 @app.post("/api/files/{filename}")
 def api_save_file(filename: str, req: SaveFileRequest):
     """Save content to a planning document."""
-    safe_filename = Path(filename).name
-    p = PROJECT_DIR / safe_filename
+    if filename not in PLANNING_FILES:
+        raise HTTPException(status_code=404, detail="Planning file not found")
+    p = PROJECT_DIR / filename
+    if p.is_symlink():
+        raise HTTPException(status_code=400, detail="Planning file must not be a symlink")
     _write_core_text(p, req.content)
-    return {"status": "saved", "filename": safe_filename, "size": len(req.content)}
+    return {"status": "saved", "filename": filename, "size": len(req.content)}
 
 
 @app.get("/api/chapters/{ch_num}")
@@ -890,7 +897,11 @@ def api_get_analytics():
 @app.get("/api/settings")
 def api_get_settings():
     """Get active engine model and temperature configuration."""
+    stored = dotenv_values(PROJECT_DIR / ".env")
+    has_gemini_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    has_anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     return {
+        "provider": os.environ.get("AUTONOVEL_PROVIDER", "auto"),
         "writer_model": os.environ.get(
             "AUTONOVEL_WRITER_MODEL", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_WRITER_MODEL"]
         ),
@@ -916,16 +927,24 @@ def api_get_settings():
         "novel_type": os.environ.get(
             "AUTONOVEL_NOVEL_TYPE", DEFAULT_PROJECT_SETTINGS["AUTONOVEL_NOVEL_TYPE"]
         ),
-        "has_gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
-        "has_anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "has_gemini_key": has_gemini_key,
+        "has_anthropic_key": has_anthropic_key,
+        "gemini_key_scope": "project" if stored.get("GEMINI_API_KEY") or stored.get("GOOGLE_API_KEY") else "server" if has_gemini_key else "none",
+        "anthropic_key_scope": "project" if stored.get("ANTHROPIC_API_KEY") else "server" if has_anthropic_key else "none",
     }
 
 
 
 
 class SettingsUpdateRequest(BaseModel):
+    provider: Optional[Literal["auto", "gemini", "anthropic"]] = None
     writer_model: Optional[str] = None
     judge_model: Optional[str] = None
+    review_model: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    clear_gemini_key: bool = False
+    clear_anthropic_key: bool = False
     temperature: Optional[float] = None
     target_words: Optional[int] = None
     language: Optional[str] = None
@@ -933,44 +952,102 @@ class SettingsUpdateRequest(BaseModel):
 
 @app.post("/api/settings")
 def api_update_settings(req: SettingsUpdateRequest):
-    """Update settings in .env and runtime environment."""
+    """Save project settings and optional replacement credentials."""
+    if job_state.is_running:
+        raise HTTPException(409, "Wait for the current background action to finish before changing engine settings")
+    if (req.gemini_api_key is not None and req.clear_gemini_key) or (
+        req.anthropic_api_key is not None and req.clear_anthropic_key
+    ):
+        raise HTTPException(400, "Cannot set and remove the same API key in one request")
+
+    updates = {}
+    if req.provider is not None:
+        updates["AUTONOVEL_PROVIDER"] = req.provider
+    for field, env_name in (
+        ("writer_model", "AUTONOVEL_WRITER_MODEL"),
+        ("judge_model", "AUTONOVEL_JUDGE_MODEL"),
+        ("review_model", "AUTONOVEL_REVIEW_MODEL"),
+    ):
+        value = getattr(req, field)
+        if value is not None:
+            value = value.strip()
+            if not value or "\n" in value or "\r" in value:
+                raise HTTPException(400, f"Invalid {field}")
+            updates[env_name] = value
+    for field, env_name in (
+        ("gemini_api_key", "GEMINI_API_KEY"),
+        ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+    ):
+        value = getattr(req, field)
+        if value is not None:
+            value = value.strip()
+            if not value or "\n" in value or "\r" in value:
+                raise HTTPException(400, f"Invalid {field}")
+            updates[env_name] = value
+    for field, env_name in (
+        ("temperature", "AUTONOVEL_TEMPERATURE"),
+        ("target_words", "AUTONOVEL_TARGET_WORDS"),
+        ("language", "AUTONOVEL_LANGUAGE"),
+        ("novel_type", "AUTONOVEL_NOVEL_TYPE"),
+    ):
+        value = getattr(req, field)
+        if value is not None:
+            updates[env_name] = str(value)
+
+    removals = set()
+    if req.clear_gemini_key:
+        removals.add("GEMINI_API_KEY")
+        removals.add("GOOGLE_API_KEY")
+    if req.clear_anthropic_key:
+        removals.add("ANTHROPIC_API_KEY")
+
     env_file = PROJECT_DIR / ".env"
+    if env_file.is_symlink():
+        raise HTTPException(400, "Project .env must not be a symlink")
     env_content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
     lines = env_content.splitlines()
-    env_map = {}
-    runtime_updates = {}
-
-    for l in lines:
-        if "=" in l and not l.strip().startswith("#"):
-            k, v = l.split("=", 1)
-            env_map[k.strip()] = v.strip()
-
-    if req.writer_model is not None:
-        env_map["AUTONOVEL_WRITER_MODEL"] = req.writer_model
-        runtime_updates["AUTONOVEL_WRITER_MODEL"] = req.writer_model
-    if req.judge_model is not None:
-        env_map["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
-        runtime_updates["AUTONOVEL_JUDGE_MODEL"] = req.judge_model
-    if req.temperature is not None:
-        env_map["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
-        runtime_updates["AUTONOVEL_TEMPERATURE"] = str(req.temperature)
-    if req.target_words is not None:
-        env_map["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
-        runtime_updates["AUTONOVEL_TARGET_WORDS"] = str(req.target_words)
-    if req.language is not None:
-        env_map["AUTONOVEL_LANGUAGE"] = req.language
-        runtime_updates["AUTONOVEL_LANGUAGE"] = req.language
-    if req.novel_type is not None:
-        env_map["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
-        runtime_updates["AUTONOVEL_NOVEL_TYPE"] = req.novel_type
-
     new_lines = []
-    for k, v in env_map.items():
-        new_lines.append(f"{k}={v}")
+    seen = set()
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else ""
+        if key in removals:
+            continue
+        if key in updates:
+            if key not in seen:
+                new_lines.append(f"{key}={json.dumps(updates[key], ensure_ascii=False)}")
+                seen.add(key)
+        else:
+            new_lines.append(line)
+    for key, value in updates.items():
+        if key not in seen:
+            new_lines.append(f"{key}={json.dumps(value, ensure_ascii=False)}")
+    if PROJECT_DIR != SCRIPT_DIR and any(key in updates for key in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY")):
+        ignore_file = PROJECT_DIR / ".gitignore"
+        if ignore_file.is_symlink():
+            raise HTTPException(400, "Project .gitignore must not be a symlink")
+        ignore_content = ignore_file.read_text(encoding="utf-8") if ignore_file.exists() else ""
+        if ".env" not in ignore_content.splitlines():
+            try:
+                atomic_write_text(ignore_file, ignore_content.rstrip("\n") + "\n.env\n")
+            except OSError as exc:
+                raise HTTPException(500, f"Failed to protect project .env: {exc}") from exc
+    try:
+        atomic_write_text(env_file, "\n".join(new_lines) + "\n", mode=0o600)
+    except OSError as exc:
+        detail = f"Failed to save {env_file.name}: {exc}"
+        print(detail, file=sys.stderr)
+        raise HTTPException(status_code=500, detail=detail) from exc
 
-    _write_core_text(env_file, "\n".join(new_lines) + "\n")
-
-    os.environ.update(runtime_updates)
+    if PROJECT_DIR == SCRIPT_DIR and env_file.resolve() == SERVER_ENV_FILE.resolve():
+        from settings import STARTUP_PROVIDER_ENVIRONMENT
+        baseline = dict(STARTUP_PROVIDER_ENVIRONMENT)
+        for key in removals:
+            baseline.pop(key, None)
+        for key in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+            if key in updates:
+                baseline[key] = updates[key]
+        capture_startup_provider_environment(baseline)
+    rebuild_runtime_settings(PROJECT_DIR)
     return {"status": "updated", "settings": api_get_settings()}
 
 
@@ -1649,6 +1726,7 @@ def api_create_project(req: CreateProjectRequest):
         raise HTTPException(400, "Project already exists")
         
     p_dir.mkdir()
+    _write_core_text(p_dir / ".gitignore", ".env\n")
     
     # Initialize basic files
     _write_core_text(p_dir / "seed.txt", "")

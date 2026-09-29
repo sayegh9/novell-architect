@@ -65,6 +65,16 @@ class AtomicWriteTests(unittest.TestCase):
 
 
 class ServerFileSafetyTests(unittest.TestCase):
+    def test_generic_file_api_cannot_read_or_replace_project_credentials(self):
+        env_path = self.project_dir / ".env"
+        env_path.write_text("GEMINI_API_KEY=private-test-value\n", encoding="utf-8")
+        read_response = self.client.get("/api/files/.env")
+        write_response = self.client.post("/api/files/.env", json={"content": "changed"})
+        self.assertEqual(read_response.status_code, 404)
+        self.assertEqual(write_response.status_code, 404)
+        self.assertNotIn("private-test-value", read_response.text)
+        self.assertEqual(env_path.read_text(), "GEMINI_API_KEY=private-test-value\n")
+
     def setUp(self):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.project_dir = Path(self._temp_dir.name)

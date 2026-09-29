@@ -37,6 +37,17 @@ changing environment keys. When running the backend from a different checkout,
 set `AUTONOVEL_ENV_FILE` to the absolute path of the intended `.env` before
 starting it; this avoids reading keys from the wrong checkout.
 
+You can also open **Engine Settings** in the Studio, choose **Google Gemini**
+or **Anthropic Claude**, and paste your own API key into the matching field.
+Enter the writer, judge, and review model IDs supported by that provider, then
+save. The key fields are blank when reopened; a blank field keeps the current
+key, and the status label shows whether one is available. A key saved through
+the UI is stored in the active project's local `.env` file with owner-only file
+permissions. The Studio does not return saved key values to the browser.
+Keys are stored as local plaintext, not in the macOS Keychain. A key supplied
+by existing server or project configuration is marked separately and cannot
+be removed from the project's settings screen.
+
 Other services (such as illustration or narration providers) are optional and
 only needed for those specific production actions. Check `.env.example` for
 the current variable names.
@@ -185,7 +196,8 @@ files before sharing or publishing them.
   the engine/project settings; changing interface language alone may not
   translate existing documents.
 - **Engine Settings** controls available model and writing options. Model names
-  and controls depend on this project version and provider configuration.
+  and controls depend on this project version and provider configuration. The
+  selected provider and models apply to new background jobs after saving.
 - Use **New Novel / Reset** carefully. It clears project state/drafts as
   described by the confirmation dialog. Back up files or create a separate
   project before a reset.

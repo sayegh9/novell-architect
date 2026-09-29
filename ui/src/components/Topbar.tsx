@@ -58,6 +58,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
   // Settings State
   const [settings, setSettings] = useState<EngineSettings>({
+    provider: 'auto',
     writer_model: 'gemini-2.5-pro',
     judge_model: 'gemini-2.5-pro',
     review_model: 'gemini-2.5-pro',
@@ -65,9 +66,15 @@ export const Topbar: React.FC<TopbarProps> = ({
     target_words: 3500,
     language: 'ar',
     novel_type: 'novel',
-    has_gemini_key: true,
+    has_gemini_key: false,
     has_anthropic_key: false,
+    gemini_key_scope: 'none',
+    anthropic_key_scope: 'none',
   });
+  const [geminiKey, setGeminiKey] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
+  const [clearGeminiKey, setClearGeminiKey] = useState(false);
+  const [clearAnthropicKey, setClearAnthropicKey] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   const isRunning = info?.is_job_running || false;
@@ -77,8 +84,12 @@ export const Topbar: React.FC<TopbarProps> = ({
     try {
       const data = await fetchSettings();
       setSettings(data);
+      setGeminiKey('');
+      setAnthropicKey('');
+      setClearGeminiKey(false);
+      setClearAnthropicKey(false);
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      error(`Failed to load settings: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -90,7 +101,25 @@ export const Topbar: React.FC<TopbarProps> = ({
   const handleSaveSettings = async () => {
     try {
       setLoading(true);
-      await saveSettings(settings);
+      const response = await saveSettings({
+        provider: settings.provider,
+        writer_model: settings.writer_model,
+        judge_model: settings.judge_model,
+        review_model: settings.review_model,
+        temperature: settings.temperature,
+        target_words: settings.target_words,
+        language: settings.language,
+        novel_type: settings.novel_type,
+        ...(geminiKey.trim() ? { gemini_api_key: geminiKey.trim() } : {}),
+        ...(anthropicKey.trim() ? { anthropic_api_key: anthropicKey.trim() } : {}),
+        clear_gemini_key: clearGeminiKey,
+        clear_anthropic_key: clearAnthropicKey,
+      });
+      setSettings(response.settings);
+      setGeminiKey('');
+      setAnthropicKey('');
+      setClearGeminiKey(false);
+      setClearAnthropicKey(false);
       setSettingsSaved(true);
       success(t('settings.saved'));
       setTimeout(() => setSettingsSaved(false), 2000);
@@ -299,42 +328,96 @@ export const Topbar: React.FC<TopbarProps> = ({
                 <Settings className="w-4 h-4 text-amber-500" />
                 {t('settings.title')}
               </h3>
-              <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs">
+              <button aria-label="Close settings" onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs">
                 ✕
               </button>
             </div>
 
             <div className="space-y-4 text-xs">
+              <div>
+                <label htmlFor="studio-provider" className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.provider')}</label>
+                <select
+                  id="studio-provider"
+                  value={settings.provider}
+                  onChange={(e) => {
+                    const provider = e.target.value as EngineSettings['provider'];
+                    const defaultModel = provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gemini-3.7-flash';
+                    setSettings({
+                      ...settings,
+                      provider,
+                      writer_model: provider === 'auto' ? settings.writer_model : defaultModel,
+                      judge_model: provider === 'auto' ? settings.judge_model : defaultModel,
+                      review_model: provider === 'auto' ? settings.review_model : defaultModel,
+                    });
+                  }}
+                  className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="auto">{t('settings.provider_auto')}</option>
+                  <option value="gemini">{t('settings.provider_gemini')}</option>
+                  <option value="anthropic">{t('settings.provider_anthropic')}</option>
+                </select>
+              </div>
+
+              <fieldset className="space-y-3 border border-slate-200 dark:border-[#262f44] rounded-lg p-3">
+                <legend className="px-1 font-semibold text-slate-700 dark:text-slate-200">{t('settings.api_keys')}</legend>
+                {([
+                  { id: 'gemini', label: t('settings.gemini_key'), configured: settings.has_gemini_key, scope: settings.gemini_key_scope, value: geminiKey, setValue: setGeminiKey, clear: clearGeminiKey, setClear: setClearGeminiKey },
+                  { id: 'anthropic', label: t('settings.anthropic_key'), configured: settings.has_anthropic_key, scope: settings.anthropic_key_scope, value: anthropicKey, setValue: setAnthropicKey, clear: clearAnthropicKey, setClear: setClearAnthropicKey },
+                ] as const).map((key) => (
+                  <div key={key.id}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <label htmlFor={`${key.id}-api-key`} className="text-slate-600 dark:text-slate-300 font-medium">{key.label}</label>
+                      <span className={key.configured && !key.clear ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}>
+                        {key.configured && !key.clear ? key.scope === 'server' ? t('settings.key_inherited') : t('settings.key_saved') : t('settings.key_missing')}
+                      </span>
+                    </div>
+                    <input
+                      id={`${key.id}-api-key`}
+                      type="password"
+                      autoComplete="new-password"
+                      value={key.value}
+                      onChange={(e) => { key.setValue(e.target.value); key.setClear(false); }}
+                      placeholder={key.configured ? '••••••••••••' : ''}
+                      className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                    {key.scope === 'project' && (
+                      <button type="button" onClick={() => { key.setClear(!key.clear); key.setValue(''); }} className="mt-1.5 text-amber-700 dark:text-amber-400 hover:underline">
+                        {key.clear ? t('settings.key_remove_pending') : t('settings.key_remove')}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <p className="text-slate-500 dark:text-slate-400 leading-relaxed">{t('settings.key_hint')}</p>
+              </fieldset>
+
               {/* Writer Model */}
               <div>
-                <label className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.writer_model')}</label>
-                <select
+                <label htmlFor="writer-model" className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.writer_model')}</label>
+                <input id="writer-model" type="text"
                   value={settings.writer_model}
                   onChange={(e) => setSettings({ ...settings, writer_model: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                >
-                  <option value="gemini-3.7-flash">Google Gemini 3.7 Flash (High Performance & Reasoning)</option>
-                  <option value="gemini-3.1-pro-preview">Google Gemini 3.1 Pro (Deepest Architecture & Lore)</option>
-                  <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Ultra Fast)</option>
-                  <option value="gemini-2.5-pro">Google Gemini 2.5 Pro</option>
-                  <option value="claude-3-5-sonnet-20241022">Anthropic Claude 3.5 Sonnet</option>
-                </select>
+                />
               </div>
 
               {/* Judge Model */}
               <div>
-                <label className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.judge_model')}</label>
-                <select
+                <label htmlFor="judge-model" className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.judge_model')}</label>
+                <input id="judge-model" type="text"
                   value={settings.judge_model}
                   onChange={(e) => setSettings({ ...settings, judge_model: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                >
-                  <option value="gemini-3.7-flash">Google Gemini 3.7 Flash (Adversarial Critique & Cuts)</option>
-                  <option value="gemini-3.1-pro-preview">Google Gemini 3.1 Pro (Rigorous Literary Judge)</option>
-                  <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Fast Evaluation)</option>
-                  <option value="gemini-2.5-pro">Google Gemini 2.5 Pro</option>
-                  <option value="claude-3-5-sonnet-20241022">Anthropic Claude 3.5 Sonnet</option>
-                </select>
+                />
+              </div>
+
+              <div>
+                <label htmlFor="review-model" className="block text-slate-600 dark:text-slate-300 font-medium mb-1.5">{t('settings.review_model')}</label>
+                <input id="review-model" type="text"
+                  value={settings.review_model}
+                  onChange={(e) => setSettings({ ...settings, review_model: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-[#0a0d14] border border-slate-200 dark:border-[#262f44] rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                />
+                <p className="mt-1 text-slate-500 dark:text-slate-400">{t('settings.model_hint')}</p>
               </div>
 
               {/* Sampling Temperature Slider */}
@@ -410,7 +493,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               <button
                 onClick={handleSaveSettings}
                 disabled={loading}
-                className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-amber-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
               >
                 {settingsSaved ? <Check className="w-3.5 h-3.5" /> : null}
                 <span>{settingsSaved ? t('settings.saved') : t('settings.save')}</span>
@@ -550,7 +633,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               <button
                 onClick={handleRunPipeline}
                 disabled={loading}
-                className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20"
+                className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-amber-950 font-semibold text-xs transition-all shadow-md shadow-amber-500/20"
               >
                 {loading ? '...' : t('modal.run.start')}
               </button>

@@ -13,6 +13,7 @@ def atomic_write_text(
     *,
     encoding: str = "utf-8",
     newline: Optional[str] = None,
+    mode: Optional[int] = None,
 ) -> None:
     """Replace ``path`` atomically after fully writing a sibling temp file.
 
@@ -34,7 +35,9 @@ def atomic_write_text(
     )
     temporary_path = Path(temporary_name)
     try:
-        if existing_mode is not None:
+        if mode is not None:
+            os.chmod(temporary_path, mode)
+        elif existing_mode is not None:
             os.chmod(temporary_path, existing_mode)
         with os.fdopen(fd, "w", encoding=encoding, newline=newline) as temporary_file:
             fd = -1
