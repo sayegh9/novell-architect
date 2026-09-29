@@ -11,15 +11,15 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
+BASE = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
 CHAPTERS_DIR = BASE / "chapters"
 EDIT_LOGS_DIR = BASE / "edit_logs"
 
-import os
 VALID_TYPES = {"OVER-EXPLAIN", "REDUNDANT", "FAT", "TELL", "STRUCTURAL", "GENERIC"}
 MIN_QUOTE_LEN = 15 if os.environ.get("AUTONOVEL_LANGUAGE") == "ar" else 25
 

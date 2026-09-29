@@ -3,7 +3,7 @@ import glob
 import markdown
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent.parent)).resolve()
 CHAPTERS_DIR = BASE_DIR / "chapters"
 OUTPUT_HTML = BASE_DIR / "manuscript.html"
 

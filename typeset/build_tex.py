@@ -5,9 +5,9 @@ import os
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
-CHAPTERS_DIR = BASE_DIR.parent / "chapters"
-OUT_DIR = BASE_DIR
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent.parent)).resolve()
+CHAPTERS_DIR = BASE_DIR / "chapters"
+OUT_DIR = BASE_DIR / "typeset"
 
 def latex_escape(t):
     t = t.replace('&', '\\&')
@@ -112,7 +112,7 @@ def main():
         latex_body = md_to_latex(body)
         latex_body = make_drop_cap(latex_body)
         
-        art_base = BASE_DIR.parent
+        art_base = BASE_DIR
         pdf_path = art_base / "art" / "pdf" / f"ornament_ch{n:02d}.pdf"
         png_path = art_base / "art" / f"ornament_ch{n:02d}.png"
         ornament_tex = ""
@@ -125,6 +125,7 @@ def main():
         print(f"  {n:2d}. {title_line}")
 
     content = '\n\\clearpage\n\n'.join(chapters_tex)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_file = OUT_DIR / "chapters_content.tex"
     out_file.write_text(content, encoding="utf-8")
     print(f"\nWrote {len(chapters_tex)} chapters to typeset/chapters_content.tex")

@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -28,7 +29,8 @@ from pathlib import Path
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", Path(__file__).resolve().parent)).resolve()
+SCRIPT_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
 STATE_FILE = BASE_DIR / "state.json"
 RESULTS_FILE = BASE_DIR / "results.tsv"
 CHAPTERS_DIR = BASE_DIR / "chapters"
@@ -508,7 +510,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
         uv_run("adversarial_edit.py all", timeout=900)
 
         # -- Step 2: Apply mechanical cuts (only if apply_cuts.py exists) --
-        apply_cuts = BASE_DIR / "apply_cuts.py"
+        apply_cuts = SCRIPT_DIR / "apply_cuts.py"
         if apply_cuts.exists():
             step("Applying mechanical cuts (OVER-EXPLAIN, REDUNDANT)...")
             uv_run("apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
@@ -546,7 +548,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
 
             # Generate revision brief
             brief_file = BRIEFS_DIR / f"ch{ch_num:02d}_cycle{cycle}_{question}.md"
-            gen_brief = BASE_DIR / "gen_brief.py"
+            gen_brief = SCRIPT_DIR / "gen_brief.py"
             if gen_brief.exists():
                 uv_run(f"gen_brief.py --panel {ch_num}", timeout=300)
 
@@ -633,7 +635,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
     # =========================================================
     # PHASE 3b: OPUS REVIEW LOOP (deep, prose-level refinement)
     # =========================================================
-    review_py = BASE_DIR / "review.py"
+    review_py = SCRIPT_DIR / "review.py"
     if review_py.exists():
         banner("PHASE 3b: OPUS REVIEW LOOP", "=")
         
@@ -677,7 +679,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             
             # Step 4: Generate briefs from review items and fix
             step("Generating revision briefs from review...")
-            gen_brief_py = BASE_DIR / "gen_brief.py"
+            gen_brief_py = SCRIPT_DIR / "gen_brief.py"
             if gen_brief_py.exists():
                 uv_run("gen_brief.py --auto", timeout=300)
                 
@@ -696,7 +698,7 @@ def run_revision(state: dict, max_cycles: int = MAX_REVISION_CYCLES) -> dict:
             
             # Step 5: Mechanical fixes from review
             step("Running mechanical cleanup pass...")
-            apply_cuts_py = BASE_DIR / "apply_cuts.py"
+            apply_cuts_py = SCRIPT_DIR / "apply_cuts.py"
             if apply_cuts_py.exists():
                 uv_run("apply_cuts.py all --types OVER-EXPLAIN REDUNDANT --min-fat 15", timeout=300)
                 git_add_commit(f"review round {rnd}: mechanical cleanup")
@@ -725,13 +727,13 @@ def run_export(state: dict) -> dict:
     banner("PHASE 4: EXPORT", "=")
 
     # 1. Rebuild outline from chapters
-    build_outline = BASE_DIR / "build_outline.py"
+    build_outline = SCRIPT_DIR / "build_outline.py"
     if build_outline.exists():
         step("Rebuilding outline from chapters...")
         uv_run("build_outline.py", timeout=300)
 
     # 2. Build arc summary
-    build_arc = BASE_DIR / "build_arc_summary.py"
+    build_arc = SCRIPT_DIR / "build_arc_summary.py"
     if build_arc.exists():
         step("Building arc summary...")
         uv_run("build_arc_summary.py", timeout=300)
@@ -763,19 +765,24 @@ def run_export(state: dict) -> dict:
     lang = detect_project_language()
     
     if lang == "ar":
-        build_html = BASE_DIR / "typeset" / "build_html.py"
+        build_html = SCRIPT_DIR / "typeset" / "build_html.py"
         if build_html.exists():
             uv_run("typeset/build_html.py", timeout=120)
             step("HTML export generated: manuscript.html")
         else:
             step("typeset/build_html.py not found, skipping HTML export")
     else:
-        build_tex = BASE_DIR / "typeset" / "build_tex.py"
+        build_tex = SCRIPT_DIR / "typeset" / "build_tex.py"
         if build_tex.exists():
             uv_run("typeset/build_tex.py", timeout=120)
             
             # Try to compile with tectonic
             novel_tex = BASE_DIR / "typeset" / "novel.tex"
+            if not novel_tex.exists():
+                template = SCRIPT_DIR / "typeset" / "novel.tex"
+                if template.exists():
+                    novel_tex.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(template, novel_tex)
             if novel_tex.exists():
                 if shutil.which("tectonic"):
                     step("Compiling PDF with tectonic...")

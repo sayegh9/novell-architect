@@ -44,6 +44,8 @@ from settings import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = Path(os.environ.get("AUTONOVEL_PROJECT_DIR", SCRIPT_DIR)).resolve()
+PROJECTS_ROOT = Path(os.environ["AUTONOVEL_PROJECTS_DIR"]).absolute() if os.environ.get("AUTONOVEL_PROJECTS_DIR") else None
+ROOT_PROJECT_DIR = Path(os.environ["AUTONOVEL_ROOT_PROJECT_DIR"]).resolve() if os.environ.get("AUTONOVEL_ROOT_PROJECT_DIR") else None
 SERVER_ENV_FILE = Path(
     os.environ.get("AUTONOVEL_ENV_FILE", SCRIPT_DIR / ".env")
 ).expanduser()
@@ -755,7 +757,7 @@ def api_get_voice_metrics():
     if not vf_path.exists():
         try:
             import subprocess
-            subprocess.run([sys.executable, str(PROJECT_DIR / "voice_fingerprint.py")], check=False)
+            subprocess.run([sys.executable, str(SCRIPT_DIR / "voice_fingerprint.py")], check=False)
         except Exception:
             pass
 
@@ -1161,7 +1163,7 @@ def api_download_manual_pdf():
     if not pdf_path.exists():
         try:
             import subprocess
-            subprocess.run([sys.executable, str(PROJECT_DIR / "generate_manual_pdf.py")], check=False)
+            subprocess.run([sys.executable, str(SCRIPT_DIR / "generate_manual_pdf.py")], check=False)
         except Exception:
             pass
     if not pdf_path.exists():
@@ -1598,11 +1600,11 @@ PROJECT_RESERVED_IDS = frozenset({"root", ".", ".."})
 
 
 def get_projects_dir() -> Path:
-    projects_path = SCRIPT_DIR / "projects"
+    projects_path = PROJECTS_ROOT or SCRIPT_DIR / "projects"
     if projects_path.is_symlink():
         raise HTTPException(400, "Projects directory must not be a symlink")
 
-    projects_path.mkdir(exist_ok=True)
+    projects_path.mkdir(parents=True, exist_ok=True)
     projects_dir = projects_path.resolve()
     if projects_dir != projects_path.absolute():
         raise HTTPException(400, "Projects directory must not be a symlink")
@@ -1674,12 +1676,13 @@ def api_list_projects():
     projects_dir = get_projects_dir()
     projects = []
     
-    root_meta = get_project_metadata(SCRIPT_DIR)
+    root_dir = ROOT_PROJECT_DIR or SCRIPT_DIR.resolve()
+    root_meta = get_project_metadata(root_dir)
     projects.append({
         "id": "root",
-        "name": "Legacy Root Project",
-        "path": str(SCRIPT_DIR),
-        "is_active": str(PROJECT_DIR) == str(SCRIPT_DIR),
+        "name": "Starter Project" if ROOT_PROJECT_DIR else "Legacy Root Project",
+        "path": str(root_dir),
+        "is_active": PROJECT_DIR == root_dir,
         **root_meta
     })
 
@@ -1690,7 +1693,7 @@ def api_list_projects():
             project_dir = resolve_project_path(p.name)
         except HTTPException:
             continue
-        if project_dir.is_dir():
+        if project_dir.is_dir() and project_dir != root_dir:
             p_meta = get_project_metadata(project_dir)
             projects.append({
                 "id": project_dir.name,
@@ -1751,6 +1754,8 @@ def api_delete_project(project_id: str):
     if project_id == "root":
         raise HTTPException(400, "Cannot delete root project")
     p_dir = resolve_project_path(project_id)
+    if ROOT_PROJECT_DIR and p_dir == ROOT_PROJECT_DIR:
+        raise HTTPException(400, "Cannot delete root project")
     if PROJECT_DIR.resolve() == p_dir:
         raise HTTPException(409, "Cannot delete active project")
 
@@ -1766,12 +1771,15 @@ def api_set_active_project(req: SetActiveProjectRequest):
     global ORCHESTRATOR_LOG_PATH
     
     if req.id == "root":
-        new_dir = SCRIPT_DIR.resolve()
+        new_dir = ROOT_PROJECT_DIR or SCRIPT_DIR.resolve()
     else:
         new_dir = resolve_project_path(req.id)
             
     PROJECT_DIR = new_dir.resolve()
     rebuild_runtime_settings(PROJECT_DIR)
+    data_dir = os.environ.get("AUTONOVEL_DATA_DIR")
+    if data_dir:
+        _write_core_text(Path(data_dir) / "active_project", PROJECT_DIR.name)
             
     ORCHESTRATOR_LOG_PATH = PROJECT_DIR / "autonovel-orchestrator.log"
     
