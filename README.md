@@ -15,6 +15,25 @@ See the `autonovel/bells` branch.
 
 ## Quick Start
 
+### Homebrew (macOS)
+
+The Homebrew formula is prepared in [Formula/autonovel.rb](Formula/autonovel.rb).
+Once this branch is released to the repository's `main` branch, install the
+preview formula with:
+
+```bash
+brew tap sayegh9/autonovel https://github.com/sayegh9/novell-architect.git
+brew install --HEAD sayegh9/autonovel/autonovel
+autonovel
+```
+
+The last command opens Studio at `http://127.0.0.1:8080`. No Node setup or
+manual virtual environment is needed. Set your provider and API key in Studio's
+Settings. Books and keys live under
+`~/Library/Application Support/Autonovel`, outside the Homebrew installation.
+See [the Homebrew guide](docs/HOMEBREW.md) for upgrading, migration, and
+troubleshooting. The formula is not yet a published stable release.
+
 ### Command Line Interface
 ```bash
 # Clone and setup
